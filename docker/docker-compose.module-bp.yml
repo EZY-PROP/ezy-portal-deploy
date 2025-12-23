@@ -14,20 +14,40 @@ services:
     image: ${BP_IMAGE:-ghcr.io/ezy-prop/ezy-portal-bp/ezy-portal-bp}:${VERSION:-latest}
     container_name: ${PROJECT_NAME:-ezy-portal}-bp
     expose:
-      - "3000"
+      - "5008"
     environment:
-      - NODE_ENV=production
-      - PORTAL_URL=http://portal:8080
+      # Database (shared with portal)
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-postgres}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB:-portal}
+      - DB_SCHEMA=bp,public
+      # Portal Integration
+      - PORTAL_API_URL=http://portal:8080
       - PORTAL_API_KEY=${BP_API_KEY}
-      - ITEMS_URL=http://items:3000
-      - MODULE_NAME=bp
+      - MICRO_SERVICE_ID=bpApp
+      # Server
+      - GIN_MODE=release
+      - PORT=5008
+      # Service URL for registration (Docker network hostname)
+      - SERVICE_URL=http://bp:5008
+      # RabbitMQ (optional)
+      - RABBITMQ_ENABLED=${RabbitMq__Enabled:-false}
+      - RABBITMQ_HOST=${RabbitMq__Host:-rabbitmq}
+      - RABBITMQ_PORT=${RabbitMq__Port:-5672}
+      - RABBITMQ_USER=${RabbitMq__User:-portal}
+      - RABBITMQ_PASSWORD=${RabbitMq__Password}
+      - RABBITMQ_VHOST=/
+      - BP_EVENTS_EXCHANGE=bp.events
+      - PROSPECT_EVENTS_EXCHANGE=prospect.events
     depends_on:
       portal:
         condition: service_healthy
       items:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:5008/health"]
       interval: 30s
       timeout: 10s
       retries: 5
