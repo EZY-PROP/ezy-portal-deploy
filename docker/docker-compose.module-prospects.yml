@@ -22,6 +22,10 @@ services:
       - BP_URL=http://bp:3000
       - ITEMS_URL=http://items:3000
       - MODULE_NAME=prospects
+      # Logging
+      - LOG_DIR=/app/logs
+    volumes:
+      - ../logs/prospects:/app/logs
     depends_on:
       portal:
         condition: service_healthy

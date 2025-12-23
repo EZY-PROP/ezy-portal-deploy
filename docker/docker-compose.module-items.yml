@@ -38,6 +38,10 @@ services:
       - RABBITMQ_USER=${RabbitMq__User:-portal}
       - RABBITMQ_PASSWORD=${RabbitMq__Password}
       - RABBITMQ_VHOST=/
+      # Logging
+      - LOG_DIR=/app/logs
+    volumes:
+      - ../logs/items:/app/logs
     depends_on:
       portal:
         condition: service_healthy

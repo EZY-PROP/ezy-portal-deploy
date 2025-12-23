@@ -27,8 +27,8 @@ services:
     environment:
       - MODULES=${MODULES:-portal}
     volumes:
-      - portal-uploads:/app/uploads
-      - portal-logs:/app/logs
+      - ../uploads:/app/uploads
+      - ../logs/portal:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -121,7 +121,7 @@ services:
       - ../nginx/snippets:/etc/nginx/snippets:ro
       - ../nginx/ssl:/etc/nginx/ssl:ro
       - nginx-cache:/var/cache/nginx
-      - nginx-logs:/var/log/nginx
+      - ../logs/nginx:/var/log/nginx
     depends_on:
       portal:
         condition: service_healthy
@@ -135,13 +135,9 @@ services:
       - portal-network
 
 # -----------------------------------------------------------------------------
-# Volumes
+# Volumes (only for persistent data - logs and uploads use bind mounts)
 # -----------------------------------------------------------------------------
 volumes:
-  portal-uploads:
-    name: ${PROJECT_NAME:-ezy-portal}-uploads
-  portal-logs:
-    name: ${PROJECT_NAME:-ezy-portal}-logs
   postgres-data:
     name: ${PROJECT_NAME:-ezy-portal}-postgres-data
   redis-data:
@@ -150,8 +146,6 @@ volumes:
     name: ${PROJECT_NAME:-ezy-portal}-rabbitmq-data
   nginx-cache:
     name: ${PROJECT_NAME:-ezy-portal}-nginx-cache
-  nginx-logs:
-    name: ${PROJECT_NAME:-ezy-portal}-nginx-logs
 
 # -----------------------------------------------------------------------------
 # Networks

@@ -398,6 +398,16 @@ step_start_services() {
     save_config_value "VERSION" "$VERSION" "$DEPLOY_ROOT/portal.env"
     save_config_value "MODULES" "$MODULES" "$DEPLOY_ROOT/portal.env"
 
+    # Generate deployment secret if not already set (used for API key provisioning)
+    local existing_secret
+    existing_secret=$(grep "^DEPLOYMENT_SECRET=" "$DEPLOY_ROOT/portal.env" 2>/dev/null | cut -d= -f2-)
+    if [[ -z "$existing_secret" ]]; then
+        local deployment_secret
+        deployment_secret=$(generate_password_alphanum 64)
+        save_config_value "DEPLOYMENT_SECRET" "$deployment_secret" "$DEPLOY_ROOT/portal.env"
+        print_success "Generated deployment secret for API key provisioning"
+    fi
+
     # Generate module image variables
     generate_module_image_vars "$VERSION" "$MODULES"
 

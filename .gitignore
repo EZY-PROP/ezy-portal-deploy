@@ -19,9 +19,15 @@ nginx/ssl/*.pem
 
 # Runtime data
 data/
-uploads/
-logs/
 backups/
+
+# Logs and uploads (contents ignored, structure kept)
+logs/**
+uploads/**
+!logs/**/
+!uploads/**/
+!logs/**/.gitkeep
+!uploads/**/.gitkeep
 
 # Docker volumes (if local)
 volumes/

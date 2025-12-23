@@ -41,6 +41,10 @@ services:
       - RABBITMQ_VHOST=/
       - BP_EVENTS_EXCHANGE=bp.events
       - PROSPECT_EVENTS_EXCHANGE=prospect.events
+      # Logging
+      - LOG_DIR=/app/logs
+    volumes:
+      - ../logs/bp:/app/logs
     depends_on:
       portal:
         condition: service_healthy

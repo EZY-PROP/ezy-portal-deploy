@@ -5,10 +5,15 @@
 # Hot-add a micro-frontend module to a running portal installation.
 #
 # Usage:
-#   ./add-module.sh items --api-key <key>     # Add items module
-#   ./add-module.sh bp --api-key <key>        # Add bp module (requires items)
-#   ./add-module.sh prospects --api-key <key> # Add prospects module (requires bp)
+#   ./add-module.sh items                     # Add items module (auto-provision key)
+#   ./add-module.sh bp                        # Add bp module (requires items)
+#   ./add-module.sh prospects                 # Add prospects module (requires bp)
+#   ./add-module.sh items --api-key <key>     # Use explicit API key
 #   ./add-module.sh items --local             # Use local Docker image
+#
+# API Key Provisioning:
+#   If --api-key is not provided, the script will auto-provision an API key
+#   using DEPLOYMENT_SECRET (generated during install.sh).
 #
 # The portal must be running before adding modules.
 # =============================================================================
@@ -105,14 +110,21 @@ show_help() {
     echo "  prospects   Prospects (requires: bp, items)"
     echo ""
     echo "Options:"
-    echo "  --api-key KEY    API key for the module (from Portal Admin)"
+    echo "  --api-key KEY    API key for the module (optional - auto-provisioned if not provided)"
     echo "  --local          Use local Docker image instead of GHCR"
     echo "  --version VER    Image version tag (default: latest)"
     echo "  --help, -h       Show this help message"
     echo ""
+    echo "API Key Provisioning:"
+    echo "  If --api-key is not provided, the script will:"
+    echo "    1. Use existing key from portal.env (if present)"
+    echo "    2. Auto-provision via DEPLOYMENT_SECRET (if configured)"
+    echo "    3. Prompt for manual key generation"
+    echo ""
     echo "Examples:"
-    echo "  ./add-module.sh items --api-key abc123def456"
-    echo "  ./add-module.sh bp --api-key xyz789 --local"
+    echo "  ./add-module.sh items                      # Auto-provision API key"
+    echo "  ./add-module.sh items --api-key abc123     # Use explicit API key"
+    echo "  ./add-module.sh bp --local                 # Local image, auto-provision key"
 }
 
 # -----------------------------------------------------------------------------
@@ -196,37 +208,123 @@ check_module_not_running() {
 # -----------------------------------------------------------------------------
 # Main Logic
 # -----------------------------------------------------------------------------
+
+# Provision an API key via the backend API using deployment secret
+provision_api_key() {
+    local module="$1"
+    local deployment_secret="${DEPLOYMENT_SECRET:-}"
+    local app_url="${APPLICATION_URL:-https://localhost}"
+
+    if [[ -z "$deployment_secret" ]]; then
+        print_warning "DEPLOYMENT_SECRET not set, cannot auto-provision API key"
+        return 1
+    fi
+
+    print_info "Auto-provisioning API key for module: $module"
+
+    # Call the provision endpoint
+    local response
+    response=$(curl -s -k -X POST "${app_url}/api/service-api-keys/provision" \
+        -H "X-Deployment-Secret: ${deployment_secret}" \
+        -H "Content-Type: application/json" \
+        -d "{\"serviceName\": \"${module}\"}" \
+        --connect-timeout 10 \
+        --max-time 30 2>&1)
+
+    local curl_exit=$?
+    if [[ $curl_exit -ne 0 ]]; then
+        print_warning "Failed to connect to portal API: curl exit code $curl_exit"
+        return 1
+    fi
+
+    # Check for error responses
+    if echo "$response" | grep -q '"message".*"Invalid deployment secret"'; then
+        print_error "Invalid deployment secret"
+        return 1
+    fi
+
+    if echo "$response" | grep -q '"message".*"not configured"'; then
+        print_warning "Deployment secret not configured on server"
+        return 1
+    fi
+
+    # Extract API key from response (only present if isNewKey=true)
+    local api_key
+    api_key=$(echo "$response" | grep -o '"apiKey"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"apiKey"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
+
+    local is_new_key
+    is_new_key=$(echo "$response" | grep -o '"isNewKey"[[:space:]]*:[[:space:]]*[a-z]*' | sed 's/"isNewKey"[[:space:]]*:[[:space:]]*//')
+
+    if [[ "$is_new_key" == "true" ]] && [[ -n "$api_key" ]]; then
+        print_success "API key provisioned successfully"
+        echo "$api_key"
+        return 0
+    elif [[ "$is_new_key" == "false" ]]; then
+        print_info "API key already exists for this module"
+        # Return empty - caller should check portal.env or use existing
+        return 0
+    else
+        print_warning "Unexpected response from provision API"
+        log_info "Provision response: $response"
+        return 1
+    fi
+}
+
 save_api_key() {
     local module="$1"
     local api_key="$2"
     local var_name="${MODULE_API_KEY_VARS[$module]}"
 
-    if [[ -z "$api_key" ]]; then
-        # Check if already set in env file
-        local existing
+    # Priority 1: Use explicitly provided API key
+    if [[ -n "$api_key" ]]; then
+        # Update or add the API key in portal.env
+        if grep -q "^${var_name}=" "$DEPLOY_ROOT/portal.env" 2>/dev/null; then
+            sed -i "s|^${var_name}=.*|${var_name}=${api_key}|" "$DEPLOY_ROOT/portal.env"
+        else
+            echo "${var_name}=${api_key}" >> "$DEPLOY_ROOT/portal.env"
+        fi
+        print_success "API key saved to portal.env"
+        return 0
+    fi
+
+    # Priority 2: Check if already set in env file
+    local existing
+    existing=$(grep "^${var_name}=" "$DEPLOY_ROOT/portal.env" 2>/dev/null | cut -d= -f2)
+    if [[ -n "$existing" ]]; then
+        print_info "Using existing API key from portal.env"
+        return 0
+    fi
+
+    # Priority 3: Auto-provision via deployment secret
+    print_info "No API key provided, attempting auto-provision..."
+    local provisioned_key
+    provisioned_key=$(provision_api_key "$module")
+    local provision_result=$?
+
+    if [[ $provision_result -eq 0 ]] && [[ -n "$provisioned_key" ]]; then
+        # Save the newly provisioned key
+        echo "${var_name}=${provisioned_key}" >> "$DEPLOY_ROOT/portal.env"
+        print_success "Auto-provisioned API key saved to portal.env"
+        return 0
+    elif [[ $provision_result -eq 0 ]]; then
+        # Key exists on server but we don't have it locally - check again
         existing=$(grep "^${var_name}=" "$DEPLOY_ROOT/portal.env" 2>/dev/null | cut -d= -f2)
         if [[ -n "$existing" ]]; then
             print_info "Using existing API key from portal.env"
             return 0
         fi
-
-        print_error "API key is required for module '$module'"
-        print_info "Generate one in Portal Admin -> API Keys"
-        print_info "Then run: ./add-module.sh $module --api-key <key>"
+        print_warning "API key exists on server but not in portal.env"
+        print_info "Please retrieve it from Portal Admin -> API Keys"
         return 1
     fi
 
-    # Update or add the API key in portal.env
-    if grep -q "^${var_name}=" "$DEPLOY_ROOT/portal.env" 2>/dev/null; then
-        # Update existing
-        sed -i "s|^${var_name}=.*|${var_name}=${api_key}|" "$DEPLOY_ROOT/portal.env"
-    else
-        # Add new
-        echo "${var_name}=${api_key}" >> "$DEPLOY_ROOT/portal.env"
-    fi
-
-    print_success "API key saved to portal.env"
-    return 0
+    # Auto-provision failed, fall back to manual instructions
+    print_error "API key is required for module '$module'"
+    print_info "Options:"
+    print_info "  1. Run with --api-key: ./add-module.sh $module --api-key <key>"
+    print_info "  2. Generate in Portal Admin -> API Keys"
+    print_info "  3. Ensure DEPLOYMENT_SECRET is set for auto-provisioning"
+    return 1
 }
 
 start_module() {
