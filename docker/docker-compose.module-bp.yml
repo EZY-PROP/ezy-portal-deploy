@@ -22,7 +22,7 @@ services:
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_NAME=${POSTGRES_DB:-portal}
-      - DB_SCHEMA=bp,public
+      - DB_SCHEMA=business_partners,public
       # Portal Integration
       - PORTAL_API_URL=http://portal:8080
       - PORTAL_API_KEY=${BP_API_KEY}
