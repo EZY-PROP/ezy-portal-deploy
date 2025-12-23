@@ -2,24 +2,20 @@
 # =============================================================================
 # EZY Portal Installation Script
 # =============================================================================
-# Single-command installation for EZY Portal and micro-frontends
+# Single-command installation for the EZY Portal core application.
 #
 # Usage:
 #   ./install.sh                              # Interactive installation
 #   ./install.sh --version 1.0.0              # Install specific version
-#   ./install.sh --modules portal,bp          # Install portal + Business Partners
-#   ./install.sh --modules all                # Install all modules
 #   ./install.sh --local                      # Use local Docker images
 #   ./install.sh --full-infra                 # Deploy with full infrastructure
 #   ./install.sh --external-infra             # Use external PostgreSQL/Redis/RabbitMQ
 #   ./install.sh --non-interactive            # Use defaults/existing config
 #
-# Modules:
-#   portal      - Core portal shell (required)
-#   bp          - Business Partners micro-frontend
-#   items       - Items micro-frontend
-#   prospects   - Prospects micro-frontend
-#   all         - All modules
+# After installation, use ./add-module.sh to add micro-frontends:
+#   ./add-module.sh items                     # Add Items module
+#   ./add-module.sh bp                        # Add Business Partners (requires items)
+#   ./add-module.sh prospects                 # Add Prospects (requires bp)
 #
 # Prerequisites:
 #   - Docker and Docker Compose v2
@@ -55,60 +51,6 @@ INFRASTRUCTURE_MODE=""
 INTERACTIVE=true
 SKIP_SSL=false
 USE_LOCAL_IMAGES=false
-MODULES="portal"  # Default to portal only
-
-# Available modules (in dependency order: items -> bp -> prospects)
-AVAILABLE_MODULES=("portal" "items" "bp" "prospects")
-
-# Module dependencies (module -> required modules)
-declare -A MODULE_DEPENDENCIES=(
-    ["items"]=""
-    ["bp"]="items"
-    ["prospects"]="items,bp"
-)
-
-# -----------------------------------------------------------------------------
-# Module Dependency Resolution
-# -----------------------------------------------------------------------------
-resolve_module_dependencies() {
-    local input_modules="$1"
-    local resolved=""
-    local -A seen=()
-
-    # Always include portal
-    seen["portal"]=1
-    resolved="portal"
-
-    # Parse input modules
-    IFS=',' read -ra module_array <<< "$input_modules"
-
-    for module in "${module_array[@]}"; do
-        module=$(echo "$module" | xargs)  # trim whitespace
-        [[ -z "$module" ]] && continue
-        [[ "$module" == "portal" ]] && continue
-
-        # Add dependencies first (in order)
-        local deps="${MODULE_DEPENDENCIES[$module]:-}"
-        if [[ -n "$deps" ]]; then
-            IFS=',' read -ra dep_array <<< "$deps"
-            for dep in "${dep_array[@]}"; do
-                dep=$(echo "$dep" | xargs)
-                if [[ -z "${seen[$dep]:-}" ]]; then
-                    seen["$dep"]=1
-                    resolved="$resolved,$dep"
-                fi
-            done
-        fi
-
-        # Add the module itself
-        if [[ -z "${seen[$module]:-}" ]]; then
-            seen["$module"]=1
-            resolved="$resolved,$module"
-        fi
-    done
-
-    echo "$resolved"
-}
 
 # -----------------------------------------------------------------------------
 # Parse Command Line Arguments
@@ -118,10 +60,6 @@ parse_arguments() {
         case $1 in
             --version)
                 VERSION="$2"
-                shift 2
-                ;;
-            --modules)
-                MODULES="$2"
                 shift 2
                 ;;
             --local)
@@ -156,16 +94,6 @@ parse_arguments() {
         esac
     done
 
-    # Expand "all" to all modules (in dependency order)
-    if [[ "$MODULES" == "all" ]]; then
-        MODULES="portal,items,bp,prospects"
-    else
-        # Resolve dependencies for specified modules
-        MODULES=$(resolve_module_dependencies "$MODULES")
-    fi
-
-    # Export for use in lib scripts
-    export MODULES
     export USE_LOCAL_IMAGES
 }
 
@@ -176,8 +104,6 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --version VERSION     Install specific version (default: latest)"
-    echo "  --modules MODULES     Comma-separated modules to install (default: portal)"
-    echo "                        Available: portal, bp, items, prospects, all"
     echo "  --local               Use local Docker images instead of GitHub Registry"
     echo "  --full-infra          Deploy PostgreSQL, Redis, RabbitMQ as containers"
     echo "  --external-infra      Use existing external infrastructure"
@@ -185,31 +111,27 @@ show_help() {
     echo "  --skip-ssl            Skip SSL certificate setup"
     echo "  --help, -h            Show this help message"
     echo ""
-    echo "Modules (dependencies auto-resolved):"
-    echo "  portal                Core portal shell (always included)"
-    echo "  items                 Items micro-frontend (base module)"
-    echo "  bp                    Business Partners (requires: items)"
-    echo "  prospects             Prospects (requires: bp, items)"
-    echo "  all                   All modules"
-    echo ""
     echo "Environment Variables:"
     echo "  GITHUB_PAT            GitHub Personal Access Token (required for GHCR)"
     echo "  VERSION               Portal version to install"
     echo "  PROJECT_NAME          Container name prefix"
     echo ""
     echo "Examples:"
-    echo "  # Interactive installation (portal only)"
+    echo "  # Interactive installation"
     echo "  export GITHUB_PAT=ghp_your_token"
     echo "  ./install.sh"
     echo ""
-    echo "  # Install portal + Business Partners using local images"
-    echo "  ./install.sh --modules portal,bp --local"
-    echo ""
-    echo "  # Install all modules from GitHub Registry"
-    echo "  ./install.sh --modules all --version 1.0.0"
+    echo "  # Install specific version with local images"
+    echo "  ./install.sh --version 1.0.0 --local"
     echo ""
     echo "  # Non-interactive with existing config"
     echo "  ./install.sh --non-interactive"
+    echo ""
+    echo "Adding Modules:"
+    echo "  After installation, use ./add-module.sh to add micro-frontends:"
+    echo "  ./add-module.sh items      # Add Items module"
+    echo "  ./add-module.sh bp         # Add Business Partners (requires items)"
+    echo "  ./add-module.sh prospects  # Add Prospects (requires bp)"
 }
 
 # -----------------------------------------------------------------------------
@@ -364,19 +286,15 @@ step_create_directories() {
 }
 
 step_pull_image() {
-    print_section "Step 6: Pulling Module Images"
+    print_section "Step 6: Pulling Portal Image"
 
     print_info "Version: $VERSION"
-    print_info "Modules: $MODULES"
     print_info "Image source: $([ "$USE_LOCAL_IMAGES" == "true" ] && echo "Local" || echo "GitHub Container Registry")"
 
-    # Generate image environment variables for compose
-    generate_module_image_vars "$VERSION" "$MODULES"
-
-    if ! docker_pull_modules "$VERSION" "$MODULES"; then
-        print_error "Failed to pull module images"
+    if ! docker_pull_image "$VERSION"; then
+        print_error "Failed to pull portal image"
         if [[ "$USE_LOCAL_IMAGES" == "true" ]]; then
-            print_info "Build the images locally first or remove --local flag"
+            print_info "Build the image locally first or remove --local flag"
         else
             print_info "Check your GITHUB_PAT and network connection"
         fi
@@ -387,16 +305,14 @@ step_pull_image() {
 step_start_services() {
     print_section "Step 7: Starting Services"
 
-    local compose_args
-    compose_args=$(get_compose_files_for_modules "$INFRASTRUCTURE_MODE" "$MODULES")
+    local compose_file
+    compose_file=$(get_compose_file "$INFRASTRUCTURE_MODE")
 
     print_info "Infrastructure mode: $INFRASTRUCTURE_MODE"
-    print_info "Modules: $MODULES"
-    print_info "Compose files: $compose_args"
+    print_info "Compose file: $compose_file"
 
-    # Save version and modules to config for upgrade tracking
+    # Save version to config for upgrade tracking
     save_config_value "VERSION" "$VERSION" "$DEPLOY_ROOT/portal.env"
-    save_config_value "MODULES" "$MODULES" "$DEPLOY_ROOT/portal.env"
 
     # Generate deployment secret if not already set (used for API key provisioning)
     local existing_secret
@@ -408,11 +324,8 @@ step_start_services() {
         print_success "Generated deployment secret for API key provisioning"
     fi
 
-    # Generate module image variables
-    generate_module_image_vars "$VERSION" "$MODULES"
-
-    # Start services using compose with module files
-    local cmd="docker compose $compose_args --env-file $DEPLOY_ROOT/portal.env up -d"
+    # Start services
+    local cmd="docker compose -f $compose_file --env-file $DEPLOY_ROOT/portal.env up -d"
     print_info "Running: $cmd"
     log_info "Running: $cmd"
 
@@ -420,7 +333,7 @@ step_start_services() {
         print_success "Services started"
     else
         print_error "Failed to start services"
-        print_info "Check logs with: docker compose $compose_args logs"
+        print_info "Check logs with: docker compose -f $compose_file logs"
         exit 1
     fi
 }
@@ -461,6 +374,8 @@ step_health_check() {
 
 show_success() {
     local app_url="${APPLICATION_URL:-https://localhost}"
+    local compose_file
+    compose_file=$(get_compose_file "$INFRASTRUCTURE_MODE")
 
     print_section "Installation Complete!"
 
@@ -472,29 +387,6 @@ show_success() {
     echo "  Hangfire:       $app_url/hangfire"
     echo ""
 
-    # Show installed modules (in dependency order)
-    echo "Installed Modules:"
-    echo "  ✓ Portal (Core Shell)"
-
-    # Display in dependency order
-    local ordered_modules=("items" "bp" "prospects")
-    for module in "${ordered_modules[@]}"; do
-        if [[ ",$MODULES," == *",$module,"* ]]; then
-            case "$module" in
-                items)
-                    echo "  ✓ Items              → $app_url/mfe/items/"
-                    ;;
-                bp)
-                    echo "  ✓ Business Partners  → $app_url/mfe/bp/"
-                    ;;
-                prospects)
-                    echo "  ✓ Prospects          → $app_url/mfe/prospects/"
-                    ;;
-            esac
-        fi
-    done
-    echo ""
-
     if [[ "$INFRASTRUCTURE_MODE" == "full" ]]; then
         echo "Infrastructure:"
         echo "  PostgreSQL:     ${PROJECT_NAME:-ezy-portal}-postgres"
@@ -503,20 +395,22 @@ show_success() {
         echo ""
     fi
 
-    local compose_args
-    compose_args=$(get_compose_files_for_modules "$INFRASTRUCTURE_MODE" "$MODULES")
-
     echo "Useful Commands:"
     echo "  View logs:      docker logs ${PROJECT_NAME:-ezy-portal}"
-    echo "  Stop:           docker compose $compose_args down"
-    echo "  Upgrade:        ./upgrade.sh --version X.X.X --modules $MODULES"
+    echo "  Stop:           docker compose -f $compose_file down"
+    echo "  Upgrade:        ./upgrade.sh --version X.X.X"
+    echo ""
+    echo "Add Modules:"
+    echo "  ./add-module.sh items      # Items micro-frontend"
+    echo "  ./add-module.sh bp         # Business Partners (requires items)"
+    echo "  ./add-module.sh prospects  # Prospects (requires bp)"
     echo ""
 
     if [[ -n "${ADMIN_EMAIL:-}" ]]; then
         print_info "Admin user will be created on first login: $ADMIN_EMAIL"
     fi
 
-    log_info "Installation completed successfully - Version: $VERSION, Modules: $MODULES"
+    log_info "Installation completed successfully - Version: $VERSION"
 }
 
 # -----------------------------------------------------------------------------

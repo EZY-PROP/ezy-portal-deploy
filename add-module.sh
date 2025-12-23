@@ -216,11 +216,11 @@ provision_api_key() {
     local app_url="${APPLICATION_URL:-https://localhost}"
 
     if [[ -z "$deployment_secret" ]]; then
-        print_warning "DEPLOYMENT_SECRET not set, cannot auto-provision API key"
+        print_warning "DEPLOYMENT_SECRET not set, cannot auto-provision API key" >&2
         return 1
     fi
 
-    print_info "Auto-provisioning API key for module: $module"
+    print_info "Auto-provisioning API key for module: $module" >&2
 
     # Call the provision endpoint
     local response
@@ -233,18 +233,18 @@ provision_api_key() {
 
     local curl_exit=$?
     if [[ $curl_exit -ne 0 ]]; then
-        print_warning "Failed to connect to portal API: curl exit code $curl_exit"
+        print_warning "Failed to connect to portal API: curl exit code $curl_exit" >&2
         return 1
     fi
 
     # Check for error responses
     if echo "$response" | grep -q '"message".*"Invalid deployment secret"'; then
-        print_error "Invalid deployment secret"
+        print_error "Invalid deployment secret" >&2
         return 1
     fi
 
     if echo "$response" | grep -q '"message".*"not configured"'; then
-        print_warning "Deployment secret not configured on server"
+        print_warning "Deployment secret not configured on server" >&2
         return 1
     fi
 
@@ -256,16 +256,16 @@ provision_api_key() {
     is_new_key=$(echo "$response" | grep -o '"isNewKey"[[:space:]]*:[[:space:]]*[a-z]*' | sed 's/"isNewKey"[[:space:]]*:[[:space:]]*//')
 
     if [[ "$is_new_key" == "true" ]] && [[ -n "$api_key" ]]; then
-        print_success "API key provisioned successfully"
+        print_success "API key provisioned successfully" >&2
         echo "$api_key"
         return 0
     elif [[ "$is_new_key" == "false" ]]; then
-        print_info "API key already exists for this module"
+        print_info "API key already exists for this module" >&2
         # Return empty - caller should check portal.env or use existing
         return 0
     else
-        print_warning "Unexpected response from provision API"
-        log_info "Provision response: $response"
+        print_warning "Unexpected response from provision API" >&2
+        log_info "Provision response: $response" >&2
         return 1
     fi
 }
