@@ -1,0 +1,44 @@
+# =============================================================================
+# EZY Portal Deployment - Git Ignore
+# =============================================================================
+
+# Configuration files with secrets
+portal.env
+*.env
+!config/*.template
+!config/*.minimal
+!config/*.full-infra
+!config/*.external-infra
+
+# SSL certificates and keys
+nginx/ssl/*.crt
+nginx/ssl/*.key
+nginx/ssl/*.pem
+!nginx/ssl/README.md
+!nginx/ssl/generate-self-signed.sh
+
+# Runtime data
+data/
+uploads/
+logs/
+backups/
+
+# Docker volumes (if local)
+volumes/
+
+# Temporary files
+*.tmp
+*.log
+*.bak
+install.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

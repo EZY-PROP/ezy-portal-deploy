@@ -1,0 +1,158 @@
+# =============================================================================
+# EZY Portal - Full Deployment (All Dependencies Included)
+# =============================================================================
+# Self-contained deployment with PostgreSQL, Redis, RabbitMQ, and Nginx.
+#
+# Usage:
+#   ./install.sh                                    # Interactive installation
+#   ./install.sh --version 1.0.0 --full-infra      # Specific version
+#
+# Manual:
+#   docker compose -f docker/docker-compose.full.yml --env-file portal.env up -d
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Portal Application
+  # ---------------------------------------------------------------------------
+  portal:
+    image: ghcr.io/ezy-prop/ezy-portal/ezy-portal:${VERSION:-latest}
+    container_name: ${PROJECT_NAME:-ezy-portal}
+    expose:
+      - "8080"
+    env_file:
+      - ../portal.env
+    volumes:
+      - portal-uploads:/app/uploads
+      - portal-logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: ${PROJECT_NAME:-ezy-portal}-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-portal}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-portal}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  # ---------------------------------------------------------------------------
+  # Redis Cache
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: ${PROJECT_NAME:-ezy-portal}-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  # ---------------------------------------------------------------------------
+  # RabbitMQ Message Broker
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: ${PROJECT_NAME:-ezy-portal}-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-portal}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-portal}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-/}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+  # ---------------------------------------------------------------------------
+  # Nginx Reverse Proxy
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ${PROJECT_NAME:-ezy-portal}-nginx
+    ports:
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/conf.d:/etc/nginx/conf.d:ro
+      - ../nginx/snippets:/etc/nginx/snippets:ro
+      - ../nginx/ssl:/etc/nginx/ssl:ro
+      - nginx-cache:/var/cache/nginx
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      portal:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "--no-check-certificate", "https://127.0.0.1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - portal-network
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  portal-uploads:
+    name: ${PROJECT_NAME:-ezy-portal}-uploads
+  portal-logs:
+    name: ${PROJECT_NAME:-ezy-portal}-logs
+  postgres-data:
+    name: ${PROJECT_NAME:-ezy-portal}-postgres-data
+  redis-data:
+    name: ${PROJECT_NAME:-ezy-portal}-redis-data
+  rabbitmq-data:
+    name: ${PROJECT_NAME:-ezy-portal}-rabbitmq-data
+  nginx-cache:
+    name: ${PROJECT_NAME:-ezy-portal}-nginx-cache
+  nginx-logs:
+    name: ${PROJECT_NAME:-ezy-portal}-nginx-logs
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  portal-network:
+    name: ${PROJECT_NAME:-ezy-portal}-network
+    driver: bridge
