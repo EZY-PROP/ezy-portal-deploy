@@ -9,7 +9,6 @@
 #   ./add-report-generator.sh service          # Install scheduler service only
 #   ./add-report-generator.sh all              # Install both API and service
 #   ./add-report-generator.sh api --version 1.0.0   # Specific version
-#   ./add-report-generator.sh api --local           # Use local Docker image
 #
 # The portal must be running before adding the report generator.
 # =============================================================================
@@ -30,7 +29,6 @@ source "$SCRIPT_DIR/lib/docker.sh"
 # Configuration
 # -----------------------------------------------------------------------------
 SERVICE_TYPE=""
-USE_LOCAL_IMAGES=false
 REPORT_GENERATOR_VERSION="${REPORT_GENERATOR_VERSION:-latest}"
 
 # -----------------------------------------------------------------------------
@@ -58,10 +56,6 @@ parse_arguments() {
                 REPORT_GENERATOR_VERSION="$2"
                 shift 2
                 ;;
-            --local)
-                USE_LOCAL_IMAGES=true
-                shift
-                ;;
             --help|-h)
                 show_help
                 exit 0
@@ -73,7 +67,6 @@ parse_arguments() {
         esac
     done
 
-    export USE_LOCAL_IMAGES
     export REPORT_GENERATOR_VERSION
 }
 
@@ -89,7 +82,6 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --version VER    Image version tag (default: latest)"
-    echo "  --local          Use local Docker image instead of GHCR"
     echo "  --help, -h       Show this help message"
     echo ""
     echo "Examples:"
@@ -97,7 +89,6 @@ show_help() {
     echo "  ./add-report-generator.sh service                # Install scheduler only"
     echo "  ./add-report-generator.sh all                    # Install both"
     echo "  ./add-report-generator.sh api --version 1.0.0    # Specific version"
-    echo "  ./add-report-generator.sh all --local            # Use local images"
     echo ""
     echo "After installation, services are accessible via Docker network:"
     echo "  API:     http://report-generator-api:5127/api/reports/..."
@@ -133,7 +124,8 @@ check_portal_running() {
 
 check_service_not_running() {
     local service_name="$1"
-    local container="ezy-report-generator-${service_name}"
+    local project_name="${PROJECT_NAME:-ezy-portal}"
+    local container="${project_name}-report-generator-${service_name}"
 
     if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
         print_warning "Report generator $service_name is already running"
@@ -174,36 +166,21 @@ ensure_directory_structure() {
 pull_image() {
     local service_name="$1"
     local ghcr_image="ghcr.io/ezy-prop/ezy-report-generator-${service_name}:${REPORT_GENERATOR_VERSION}"
-    local local_image="ezy-report-generator-${service_name}:${REPORT_GENERATOR_VERSION}"
 
-    if [[ "$USE_LOCAL_IMAGES" == "true" ]]; then
-        print_info "Using local image (--local specified)"
-
-        # Check for local image (without ghcr.io prefix)
-        if docker image inspect "$local_image" &>/dev/null; then
-            print_success "Local image found: $local_image"
-            # Tag it with the ghcr name so compose file works
-            docker tag "$local_image" "$ghcr_image"
-            print_info "Tagged as: $ghcr_image"
-            return 0
-        # Also check if already tagged with ghcr name
-        elif docker image inspect "$ghcr_image" &>/dev/null; then
-            print_success "Local image found: $ghcr_image"
-            return 0
-        else
-            print_error "Local image not found: $local_image"
-            print_info "Build the image locally first or remove --local flag"
-            return 1
-        fi
+    # Check if image already exists locally
+    if docker image inspect "$ghcr_image" &>/dev/null; then
+        print_success "Image found locally: $ghcr_image"
+        return 0
     fi
 
+    # Pull from registry
     print_info "Pulling image: $ghcr_image"
     if docker pull "$ghcr_image"; then
         print_success "Image pulled successfully"
         return 0
     else
         print_error "Failed to pull image: $ghcr_image"
-        print_info "Check your GITHUB_PAT and network connection"
+        print_info "Check your GITHUB_PAT and network connection, or build/tag the image locally as: $ghcr_image"
         return 1
     fi
 }
@@ -238,7 +215,8 @@ start_service() {
 
 wait_for_healthy() {
     local service_name="$1"
-    local container="ezy-report-generator-${service_name}"
+    local project_name="${PROJECT_NAME:-ezy-portal}"
+    local container="${project_name}-report-generator-${service_name}"
     local timeout=120
 
     # Service container has no health check
@@ -292,11 +270,9 @@ main() {
     check_docker_running || exit 1
     check_portal_running || exit 1
 
-    # GHCR login if not using local images
-    if [[ "$USE_LOCAL_IMAGES" != "true" ]]; then
-        print_subsection "GitHub Container Registry"
-        check_ghcr_login || exit 1
-    fi
+    # GHCR login
+    print_subsection "GitHub Container Registry"
+    check_ghcr_login || exit 1
 
     # Ensure directory structure
     print_section "Step 2: Directory Structure"
@@ -349,9 +325,10 @@ main() {
     print_success "Report Generator ($SERVICE_TYPE) installed successfully!"
     echo ""
 
+    local project_name="${PROJECT_NAME:-ezy-portal}"
     for svc in "${services[@]}"; do
-        echo "  Container:  ezy-report-generator-${svc}"
-        echo "  Logs:       docker logs ezy-report-generator-${svc}"
+        echo "  Container:  ${project_name}-report-generator-${svc}"
+        echo "  Logs:       docker logs ${project_name}-report-generator-${svc}"
         if [[ "$svc" == "api" ]]; then
             echo "  API URL:    http://report-generator-api:5127/api/reports/"
             echo "  Health:     http://report-generator-api:5127/api/admin/health"

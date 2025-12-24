@@ -9,7 +9,6 @@
 #   ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --version 1.0.0
 #   ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --api-key <key>
 #   ./add-customer-module.sh --from-file ./package.tar.gz
-#   ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --local
 #
 # The portal must be running before adding customer modules.
 # =============================================================================
@@ -34,7 +33,6 @@ GITHUB_REPO=""
 PACKAGE_VERSION="latest"
 API_KEY=""
 FROM_FILE=""
-USE_LOCAL_IMAGES=false
 UPGRADE_MODE=false
 VERSION="${VERSION:-latest}"
 
@@ -68,10 +66,6 @@ parse_arguments() {
                 FROM_FILE="$2"
                 shift 2
                 ;;
-            --local)
-                USE_LOCAL_IMAGES=true
-                shift
-                ;;
             --upgrade|-u)
                 UPGRADE_MODE=true
                 shift
@@ -93,8 +87,6 @@ parse_arguments() {
         show_help
         exit 1
     fi
-
-    export USE_LOCAL_IMAGES
 }
 
 show_help() {
@@ -110,7 +102,6 @@ show_help() {
     echo "  --version VERSION    Release version to install (default: latest)"
     echo "  --api-key KEY        API key for the module (optional - auto-provisioned if not provided)"
     echo "  --from-file FILE     Install from local package (.tar.gz, .tgz, or .zip)"
-    echo "  --local              Use local Docker image instead of GHCR"
     echo "  --upgrade, -u        Upgrade module if already running (no confirmation)"
     echo "  --help, -h           Show this help message"
     echo ""
@@ -126,9 +117,6 @@ show_help() {
     echo ""
     echo "  # Install from local zip file"
     echo "  ./add-customer-module.sh --from-file ./quotation-tool-1.0.0.zip"
-    echo ""
-    echo "  # Install from local tarball with local Docker image"
-    echo "  ./add-customer-module.sh --from-file ./package.tar.gz --local"
     echo ""
     echo "Prerequisites:"
     echo "  - Portal must be running"
@@ -262,31 +250,14 @@ pull_customer_image() {
     local image_tag="$2"
 
     local full_image="${image_repo}:${image_tag}"
-    # Extract just the image name (e.g., red-cloud-quotation-tool from ghcr.io/ezy-prop/red-cloud-quotation-tool)
-    local image_name="${image_repo##*/}"
-    local local_image="${image_name}:${image_tag}"
 
-    if [[ "$USE_LOCAL_IMAGES" == "true" ]]; then
-        print_info "Using local image (--local specified)"
-
-        # Check for local image (without ghcr.io prefix)
-        if docker image inspect "$local_image" &>/dev/null; then
-            print_success "Local image found: $local_image"
-            # Tag it with the full ghcr name so compose file works
-            docker tag "$local_image" "$full_image"
-            print_info "Tagged as: $full_image"
-            return 0
-        # Also check if already tagged with full name
-        elif docker image inspect "$full_image" &>/dev/null; then
-            print_success "Local image found: $full_image"
-            return 0
-        else
-            print_error "Local image not found: $local_image"
-            print_info "Build the image locally first or remove --local flag"
-            return 1
-        fi
+    # Check if image already exists locally
+    if docker image inspect "$full_image" &>/dev/null; then
+        print_success "Image found locally: $full_image"
+        return 0
     fi
 
+    # Pull from registry
     print_info "Pulling image: $full_image"
 
     if docker pull "$full_image"; then
@@ -294,7 +265,7 @@ pull_customer_image() {
         return 0
     else
         print_error "Failed to pull image: $full_image"
-        print_info "Check your GITHUB_PAT and network connection"
+        print_info "Check your GITHUB_PAT and network connection, or build/tag the image locally as: $full_image"
         return 1
     fi
 }
@@ -348,14 +319,12 @@ main() {
     check_prerequisites || exit 1
     check_portal_is_running || exit 1
 
-    # GHCR login if not using local images
-    if [[ "$USE_LOCAL_IMAGES" != "true" ]]; then
-        print_subsection "GitHub Container Registry"
-        check_ghcr_login || exit 1
-    fi
+    # GHCR login
+    print_subsection "GitHub Container Registry"
+    check_ghcr_login || exit 1
 
-    # Quick upgrade path: when --upgrade --local and compose file exists, skip download
-    if [[ "$UPGRADE_MODE" == "true" && "$USE_LOCAL_IMAGES" == "true" ]]; then
+    # Quick upgrade path: when --upgrade and compose file exists with local image available
+    if [[ "$UPGRADE_MODE" == "true" && -n "$GITHUB_REPO" ]]; then
         # Extract module name from repo (e.g., red-cloud-quotation-tool from ezy-prop/red-cloud-quotation-tool)
         local module_name="${GITHUB_REPO##*/}"
         local compose_file
@@ -363,48 +332,39 @@ main() {
         local target_version="$PACKAGE_VERSION"
 
         if [[ -f "$compose_file" ]]; then
-            print_section "Quick Upgrade Mode"
-            print_info "Upgrading $module_name to version $target_version using local image"
-
-            # Stop existing container
-            stop_customer_module "$module_name"
-
             # Extract image repo from existing compose file
             local image_repo
             image_repo=$(grep -oP 'image:\s*\K[^:]+' "$compose_file" | head -1)
-            local image_name="${image_repo##*/}"
-            local local_image="${image_name}:${target_version}"
             local full_image="${image_repo}:${target_version}"
 
-            # Check and tag local image
-            if docker image inspect "$local_image" &>/dev/null; then
-                print_success "Local image found: $local_image"
-                docker tag "$local_image" "$full_image"
-                print_info "Tagged as: $full_image"
-            else
-                print_error "Local image not found: $local_image"
-                exit 1
+            # Check if image exists locally - if so, use quick upgrade path
+            if docker image inspect "$full_image" &>/dev/null; then
+                print_section "Quick Upgrade Mode"
+                print_info "Upgrading $module_name to version $target_version"
+
+                # Stop existing container
+                stop_customer_module "$module_name"
+
+                # Update compose file with new version
+                sed -i "s|${image_repo}:[^[:space:]]*|${full_image}|g" "$compose_file"
+                print_success "Updated compose file to use: $full_image"
+
+                # Start module
+                start_customer_module "$module_name"
+
+                # Reload nginx
+                reload_nginx || true
+
+                # Wait for healthy
+                wait_for_customer_module_healthy "$module_name" 120 || true
+
+                # Update registry
+                register_customer_module "$module_name" "$target_version" "${GITHUB_REPO:-local}"
+
+                echo ""
+                print_success "Upgrade complete! $module_name is now running version $target_version"
+                exit 0
             fi
-
-            # Update compose file with new version
-            sed -i "s|${image_repo}:[^[:space:]]*|${full_image}|g" "$compose_file"
-            print_success "Updated compose file to use: $full_image"
-
-            # Start module
-            start_customer_module "$module_name"
-
-            # Reload nginx
-            reload_nginx || true
-
-            # Wait for healthy
-            wait_for_customer_module_healthy "$module_name" 120 || true
-
-            # Update registry
-            register_customer_module "$module_name" "$target_version" "${GITHUB_REPO:-local}"
-
-            echo ""
-            print_success "Upgrade complete! $module_name is now running version $target_version"
-            exit 0
         fi
     fi
 

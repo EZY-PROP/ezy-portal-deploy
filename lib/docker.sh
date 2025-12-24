@@ -22,34 +22,23 @@ declare -A MODULE_IMAGES=(
     ["prospects"]="ezy-portal-prospects"
 )
 
-# Get image name for a module (local or GHCR)
+# Get image name for a module (always returns full GHCR path)
 get_module_image() {
     local module="$1"
-    local use_local="${USE_LOCAL_IMAGES:-false}"
     local image_name="${MODULE_IMAGES[$module]:-ezy-portal}"
 
-    if [[ "$use_local" == "true" ]]; then
-        echo "$image_name"
-    else
-        echo "${REGISTRY}/${GITHUB_ORG}/${image_name}/${image_name}"
-    fi
+    echo "${REGISTRY}/${GITHUB_ORG}/${image_name}"
 }
 
 # Legacy compatibility
 IMAGE_NAME="ezy-portal"
-FULL_IMAGE="${REGISTRY}/${GITHUB_ORG}/${IMAGE_NAME}/${IMAGE_NAME}"
+FULL_IMAGE="${REGISTRY}/${GITHUB_ORG}/${IMAGE_NAME}"
 
 # -----------------------------------------------------------------------------
 # Registry Operations
 # -----------------------------------------------------------------------------
 
 docker_login_ghcr() {
-    # Skip GHCR login if using local images
-    if [[ "${USE_LOCAL_IMAGES:-false}" == "true" ]]; then
-        print_info "Using local images - skipping GHCR login"
-        return 0
-    fi
-
     local username="${GITHUB_USERNAME:-$GITHUB_ORG}"
 
     if [[ -z "${GITHUB_PAT:-}" ]]; then
@@ -83,19 +72,13 @@ docker_pull_image() {
 
     image="$(get_module_image "$module"):${tag}"
 
-    # Skip pull if using local images
-    if [[ "${USE_LOCAL_IMAGES:-false}" == "true" ]]; then
-        print_info "Using local image: $image"
-        if docker image inspect "$image" &>/dev/null; then
-            print_success "Local image found: $image"
-            return 0
-        else
-            print_error "Local image not found: $image"
-            print_info "Build the image first or remove --local flag"
-            return 1
-        fi
+    # Check if image already exists locally
+    if docker image inspect "$image" &>/dev/null; then
+        print_success "Image found locally: $image"
+        return 0
     fi
 
+    # Pull from registry
     print_info "Pulling image: $image"
 
     if docker pull "$image"; then
@@ -103,6 +86,7 @@ docker_pull_image() {
         return 0
     else
         print_error "Failed to pull: $image"
+        print_info "Check your GITHUB_PAT and network connection, or build/tag the image locally as: $image"
         return 1
     fi
 }
@@ -211,7 +195,6 @@ get_compose_files_for_modules() {
 generate_module_image_vars() {
     local tag="${1:-latest}"
     local modules="${2:-portal}"
-    local use_local="${USE_LOCAL_IMAGES:-false}"
 
     IFS=',' read -ra module_array <<< "$modules"
 

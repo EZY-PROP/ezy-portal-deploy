@@ -129,7 +129,6 @@ check_github_pat() {
         echo ""
         echo "   export GITHUB_PAT=ghp_your_token_here"
         echo ""
-        print_info "Alternatively, use --local flag to use locally built images"
         return 1
     fi
     print_success "GITHUB_PAT is set"
@@ -137,12 +136,6 @@ check_github_pat() {
 }
 
 check_ghcr_login() {
-    # Skip GHCR login if using local images
-    if [[ "${USE_LOCAL_IMAGES:-false}" == "true" ]]; then
-        print_info "Using local images - skipping GHCR authentication"
-        return 0
-    fi
-
     local username="${GITHUB_USERNAME:-ezy-prop}"
 
     print_info "Attempting to login to GitHub Container Registry..."

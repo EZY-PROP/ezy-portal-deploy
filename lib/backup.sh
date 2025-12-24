@@ -205,32 +205,32 @@ EOF
 create_full_backup() {
     local reason="${1:-manual}"
 
-    print_section "Creating Full Backup"
+    print_section "Creating Full Backup" >&2
 
     local backup_path
     backup_path=$(create_backup_dir)
 
-    print_info "Backup location: $backup_path"
-    echo ""
+    print_info "Backup location: $backup_path" >&2
+    echo "" >&2
 
     local failed=0
 
-    backup_database "$backup_path" || ((failed++))
-    backup_uploads "$backup_path" || ((failed++))
-    backup_config "$backup_path" || :  # Config backup is optional
-    backup_logs "$backup_path" || :    # Logs backup is optional
+    backup_database "$backup_path" >&2 || ((failed++))
+    backup_uploads "$backup_path" >&2 || ((failed++))
+    backup_config "$backup_path" >&2 || :  # Config backup is optional
+    backup_logs "$backup_path" >&2 || :    # Logs backup is optional
     create_backup_metadata "$backup_path" "$reason"
 
     if [[ $failed -gt 0 ]]; then
-        print_warning "Backup completed with $failed warnings"
+        print_warning "Backup completed with $failed warnings" >&2
     else
-        print_success "Full backup completed: $backup_path"
+        print_success "Full backup completed: $backup_path" >&2
     fi
 
     # Show backup size
     local size
     size=$(du -sh "$backup_path" | awk '{print $1}')
-    print_info "Backup size: $size"
+    print_info "Backup size: $size" >&2
 
     echo "$backup_path"
 }

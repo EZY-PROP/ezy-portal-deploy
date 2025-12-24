@@ -7,7 +7,6 @@
 # Usage:
 #   ./install.sh                              # Interactive installation
 #   ./install.sh --version 1.0.0              # Install specific version
-#   ./install.sh --local                      # Use local Docker images
 #   ./install.sh --full-infra                 # Deploy with full infrastructure
 #   ./install.sh --external-infra             # Use external PostgreSQL/Redis/RabbitMQ
 #   ./install.sh --non-interactive            # Use defaults/existing config
@@ -50,7 +49,6 @@ PROJECT_NAME="${PROJECT_NAME:-ezy-portal}"
 INFRASTRUCTURE_MODE=""
 INTERACTIVE=true
 SKIP_SSL=false
-USE_LOCAL_IMAGES=false
 
 # -----------------------------------------------------------------------------
 # Parse Command Line Arguments
@@ -61,10 +59,6 @@ parse_arguments() {
             --version)
                 VERSION="$2"
                 shift 2
-                ;;
-            --local)
-                USE_LOCAL_IMAGES=true
-                shift
                 ;;
             --full-infra)
                 INFRASTRUCTURE_MODE="full"
@@ -93,8 +87,6 @@ parse_arguments() {
                 ;;
         esac
     done
-
-    export USE_LOCAL_IMAGES
 }
 
 show_help() {
@@ -104,7 +96,6 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --version VERSION     Install specific version (default: latest)"
-    echo "  --local               Use local Docker images instead of GitHub Registry"
     echo "  --full-infra          Deploy PostgreSQL, Redis, RabbitMQ as containers"
     echo "  --external-infra      Use existing external infrastructure"
     echo "  --non-interactive     Skip prompts, use defaults or existing config"
@@ -121,8 +112,8 @@ show_help() {
     echo "  export GITHUB_PAT=ghp_your_token"
     echo "  ./install.sh"
     echo ""
-    echo "  # Install specific version with local images"
-    echo "  ./install.sh --version 1.0.0 --local"
+    echo "  # Install specific version"
+    echo "  ./install.sh --version 1.0.0"
     echo ""
     echo "  # Non-interactive with existing config"
     echo "  ./install.sh --non-interactive"
@@ -289,15 +280,9 @@ step_pull_image() {
     print_section "Step 6: Pulling Portal Image"
 
     print_info "Version: $VERSION"
-    print_info "Image source: $([ "$USE_LOCAL_IMAGES" == "true" ] && echo "Local" || echo "GitHub Container Registry")"
 
     if ! docker_pull_image "$VERSION"; then
         print_error "Failed to pull portal image"
-        if [[ "$USE_LOCAL_IMAGES" == "true" ]]; then
-            print_info "Build the image locally first or remove --local flag"
-        else
-            print_info "Check your GITHUB_PAT and network connection"
-        fi
         exit 1
     fi
 }

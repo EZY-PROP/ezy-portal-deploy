@@ -101,7 +101,8 @@ show_help() {
 # -----------------------------------------------------------------------------
 stop_service() {
     local service_name="$1"
-    local container="ezy-report-generator-${service_name}"
+    local project_name="${PROJECT_NAME:-ezy-portal}"
+    local container="${project_name}-report-generator-${service_name}"
     local compose_file="$DEPLOY_ROOT/docker/docker-compose.report-generator-${service_name}.yml"
 
     if ! docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then

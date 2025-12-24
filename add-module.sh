@@ -9,7 +9,6 @@
 #   ./add-module.sh bp                        # Add bp module (requires items)
 #   ./add-module.sh prospects                 # Add prospects module (requires bp)
 #   ./add-module.sh items --api-key <key>     # Use explicit API key
-#   ./add-module.sh items --local             # Use local Docker image
 #
 # API Key Provisioning:
 #   If --api-key is not provided, the script will auto-provision an API key
@@ -35,7 +34,6 @@ source "$SCRIPT_DIR/lib/docker.sh"
 # -----------------------------------------------------------------------------
 MODULE=""
 API_KEY=""
-USE_LOCAL_IMAGES=false
 VERSION="${VERSION:-latest}"
 
 # Module dependencies
@@ -77,10 +75,6 @@ parse_arguments() {
                 API_KEY="$2"
                 shift 2
                 ;;
-            --local)
-                USE_LOCAL_IMAGES=true
-                shift
-                ;;
             --version)
                 VERSION="$2"
                 shift 2
@@ -95,8 +89,6 @@ parse_arguments() {
                 ;;
         esac
     done
-
-    export USE_LOCAL_IMAGES
 }
 
 show_help() {
@@ -111,7 +103,6 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --api-key KEY    API key for the module (optional - auto-provisioned if not provided)"
-    echo "  --local          Use local Docker image instead of GHCR"
     echo "  --version VER    Image version tag (default: latest)"
     echo "  --help, -h       Show this help message"
     echo ""
@@ -124,7 +115,7 @@ show_help() {
     echo "Examples:"
     echo "  ./add-module.sh items                      # Auto-provision API key"
     echo "  ./add-module.sh items --api-key abc123     # Use explicit API key"
-    echo "  ./add-module.sh bp --local                 # Local image, auto-provision key"
+    echo "  ./add-module.sh bp --version 1.0.2         # Specific version"
 }
 
 # -----------------------------------------------------------------------------

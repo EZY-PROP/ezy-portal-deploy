@@ -203,10 +203,14 @@ step_create_backup() {
 }
 
 step_pull_new_image() {
-    print_section "Step 5: Pulling New Image"
+    print_section "Step 5: Pulling Images"
 
-    if ! docker_pull_image "$VERSION"; then
-        print_error "Failed to pull version $VERSION"
+    print_info "Version: $VERSION"
+    print_info "Modules: ${MODULES:-portal}"
+
+    # Pull images for all configured modules
+    if ! docker_pull_modules "$VERSION" "${MODULES:-portal}"; then
+        print_error "Failed to pull images for version $VERSION"
 
         if [[ -n "${BACKUP_PATH:-}" ]]; then
             print_info "Backup is available for rollback: $BACKUP_PATH"
@@ -218,29 +222,52 @@ step_pull_new_image() {
 step_stop_services() {
     print_section "Step 6: Stopping Current Services"
 
-    local compose_file
-    compose_file=$(get_compose_file "$INFRASTRUCTURE_MODE")
+    local project_name="${PROJECT_NAME:-ezy-portal}"
 
-    # Stop only the portal container, keep infrastructure running
-    print_info "Stopping portal container..."
+    # Stop all module containers, keep infrastructure running
+    print_info "Stopping module containers..."
 
-    docker stop "${PROJECT_NAME:-ezy-portal}" 2>/dev/null || true
-    docker rm "${PROJECT_NAME:-ezy-portal}" 2>/dev/null || true
+    # Stop main portal
+    docker stop "${project_name}" 2>/dev/null || true
+    docker rm "${project_name}" 2>/dev/null || true
 
-    print_success "Portal stopped"
+    # Stop module containers based on MODULES config
+    IFS=',' read -ra module_array <<< "${MODULES:-portal}"
+    for module in "${module_array[@]}"; do
+        module=$(echo "$module" | xargs)
+        if [[ "$module" != "portal" && -n "$module" ]]; then
+            local container="${project_name}-${module}"
+            print_info "Stopping $container..."
+            docker stop "$container" 2>/dev/null || true
+            docker rm "$container" 2>/dev/null || true
+        fi
+    done
+
+    print_success "Module containers stopped"
 }
 
 step_start_new_version() {
     print_section "Step 7: Starting New Version"
 
-    local compose_file
-    compose_file=$(get_compose_file "$INFRASTRUCTURE_MODE")
-
     # Update version in config
     save_config_value "VERSION" "$VERSION" "$DEPLOY_ROOT/portal.env"
 
-    # Start services
-    if ! docker_compose_up "$compose_file" "$DEPLOY_ROOT/portal.env"; then
+    # Generate module image environment variables
+    generate_module_image_vars "$VERSION" "${MODULES:-portal}"
+
+    # Get compose files for all modules
+    local compose_args
+    compose_args=$(get_compose_files_for_modules "$INFRASTRUCTURE_MODE" "${MODULES:-portal}")
+
+    print_info "Starting with compose files: $compose_args"
+
+    # Start services using compose args directly
+    local cmd="docker compose $compose_args --env-file $DEPLOY_ROOT/portal.env up -d"
+    log_info "Running: $cmd"
+
+    if eval "$cmd"; then
+        print_success "Services started"
+    else
         print_error "Failed to start new version"
 
         if [[ -n "${BACKUP_PATH:-}" ]]; then
@@ -254,11 +281,31 @@ step_start_new_version() {
 step_verify_health() {
     print_section "Step 8: Verifying Health"
 
-    local container="${PROJECT_NAME:-ezy-portal}"
+    local project_name="${PROJECT_NAME:-ezy-portal}"
     local timeout=180
+    local failed=0
 
-    if ! wait_for_healthy "$container" "$timeout"; then
-        print_error "New version did not become healthy"
+    # Check main portal
+    if ! wait_for_healthy "$project_name" "$timeout"; then
+        print_error "Portal did not become healthy"
+        ((failed++))
+    fi
+
+    # Check module containers
+    IFS=',' read -ra module_array <<< "${MODULES:-portal}"
+    for module in "${module_array[@]}"; do
+        module=$(echo "$module" | xargs)
+        if [[ "$module" != "portal" && -n "$module" ]]; then
+            local container="${project_name}-${module}"
+            if ! wait_for_healthy "$container" 60; then
+                print_error "$container did not become healthy"
+                ((failed++))
+            fi
+        fi
+    done
+
+    if [[ $failed -gt 0 ]]; then
+        print_error "$failed container(s) failed health check"
 
         if [[ -n "${BACKUP_PATH:-}" ]]; then
             print_warning "Attempting automatic rollback..."
@@ -267,7 +314,7 @@ step_verify_health() {
         exit 1
     fi
 
-    print_success "New version is healthy"
+    print_success "All containers are healthy"
 }
 
 step_cleanup() {

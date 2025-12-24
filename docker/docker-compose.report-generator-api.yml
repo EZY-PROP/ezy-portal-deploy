@@ -7,8 +7,8 @@
 
 services:
   report-generator-api:
-    image: ghcr.io/ezy-prop/ezy-report-generator-api:${REPORT_GENERATOR_VERSION:-latest}
-    container_name: ezy-report-generator-api
+    image: ${REPORT_GENERATOR_API_IMAGE:-ghcr.io/ezy-prop/ezy-report-generator-api}:${REPORT_GENERATOR_VERSION:-latest}
+    container_name: ${PROJECT_NAME:-ezy-portal}-report-generator-api
     restart: unless-stopped
     networks:
       - portal-network
