@@ -21,6 +21,12 @@ nginx/ssl/*.pem
 data/
 backups/
 
+# Customer modules (generated at runtime)
+customer-modules/installed.json
+docker/docker-compose.module-customer-*.yml
+nginx/conf.d/customer/*.conf
+!nginx/conf.d/customer/.gitkeep
+
 # Logs and uploads (contents ignored, structure kept)
 logs/**
 uploads/**

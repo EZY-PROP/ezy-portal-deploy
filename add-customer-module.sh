@@ -96,7 +96,7 @@ show_help() {
     echo "EZY Portal - Add Customer Module"
     echo ""
     echo "Usage: ./add-customer-module.sh <org/repo> [OPTIONS]"
-    echo "       ./add-customer-module.sh --from-file <package.tar.gz> [OPTIONS]"
+    echo "       ./add-customer-module.sh --from-file <package> [OPTIONS]"
     echo ""
     echo "Arguments:"
     echo "  <org/repo>           GitHub repository (e.g., ezy-prop/red-cloud-quotation-tool)"
@@ -104,7 +104,7 @@ show_help() {
     echo "Options:"
     echo "  --version VERSION    Release version to install (default: latest)"
     echo "  --api-key KEY        API key for the module (optional - auto-provisioned if not provided)"
-    echo "  --from-file FILE     Install from local tarball instead of GitHub"
+    echo "  --from-file FILE     Install from local package (.tar.gz, .tgz, or .zip)"
     echo "  --local              Use local Docker image instead of GHCR"
     echo "  --help, -h           Show this help message"
     echo ""
@@ -118,12 +118,16 @@ show_help() {
     echo "  # Install with explicit API key"
     echo "  ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --api-key abc123"
     echo ""
-    echo "  # Install from local package file"
-    echo "  ./add-customer-module.sh --from-file ./quotation-tool-1.0.0.tar.gz"
+    echo "  # Install from local zip file"
+    echo "  ./add-customer-module.sh --from-file ./quotation-tool-1.0.0.zip"
+    echo ""
+    echo "  # Install from local tarball with local Docker image"
+    echo "  ./add-customer-module.sh --from-file ./package.tar.gz --local"
     echo ""
     echo "Prerequisites:"
     echo "  - Portal must be running"
     echo "  - yq installed (for YAML parsing)"
+    echo "  - unzip installed (for .zip files)"
     echo "  - gh CLI installed and authenticated (for private repos)"
     echo "  - jq installed (for module registry)"
 }
@@ -365,14 +369,9 @@ main() {
     # Check if already running
     check_module_not_already_running "$MODULE_NAME"
 
-    # Pull image
+    # Pull image (always use the manifest's image tag - it knows the correct tag)
     print_section "Step 5: Pull Image"
-    local image_tag="${MODULE_IMAGE_TAG}"
-    if [[ "$PACKAGE_VERSION" != "latest" && "$PACKAGE_VERSION" != "$MODULE_IMAGE_TAG" ]]; then
-        # Use version from command line if specified
-        image_tag="$PACKAGE_VERSION"
-    fi
-    if ! pull_customer_image "$MODULE_IMAGE_REPO" "$image_tag"; then
+    if ! pull_customer_image "$MODULE_IMAGE_REPO" "$MODULE_IMAGE_TAG"; then
         exit 1
     fi
 

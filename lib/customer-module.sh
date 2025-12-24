@@ -438,7 +438,7 @@ list_customer_modules() {
 # GitHub Release Download
 # -----------------------------------------------------------------------------
 
-# Download a release asset from GitHub
+# Download a release asset from GitHub (supports .tar.gz, .tgz, .zip)
 # Usage: download_release_asset "org/repo" "version" "/path/to/output"
 download_release_asset() {
     local repo="$1"
@@ -451,30 +451,36 @@ download_release_asset() {
     local repo_name="${repo##*/}"
 
     # Try gh CLI first (works for private repos)
+    # Note: print_info/print_warning go to stderr to avoid polluting stdout (return value)
     if check_command_exists gh && gh auth status &>/dev/null; then
-        print_info "Downloading release asset using gh CLI..."
+        print_info "Downloading release asset using gh CLI..." >&2
 
-        local gh_args=("release" "download" "--repo" "$repo" "--pattern" "*.tar.gz" "--dir" "$output_dir")
-
-        if [[ "$version" != "latest" ]]; then
-            gh_args+=("$version")
-        fi
-
-        if gh "${gh_args[@]}" 2>/dev/null; then
-            # Find the downloaded file
-            local downloaded_file
-            downloaded_file=$(find "$output_dir" -name "*.tar.gz" -type f | head -n1)
-            if [[ -n "$downloaded_file" ]]; then
-                echo "$downloaded_file"
-                return 0
+        # Try .tar.gz first, then .zip
+        local patterns=("*.tar.gz" "*.tgz" "*.zip")
+        for pattern in "${patterns[@]}"; do
+            # Build args: gh release download [tag] --repo ... --pattern ... --dir ...
+            local gh_args=("release" "download")
+            if [[ "$version" != "latest" ]]; then
+                gh_args+=("$version")
             fi
-        fi
+            gh_args+=("--repo" "$repo" "--pattern" "$pattern" "--dir" "$output_dir")
 
-        print_warning "gh CLI download failed, trying curl..."
+            if gh "${gh_args[@]}" 2>/dev/null; then
+                # Find the downloaded file
+                local downloaded_file
+                downloaded_file=$(find "$output_dir" \( -name "*.tar.gz" -o -name "*.tgz" -o -name "*.zip" \) -type f | head -n1)
+                if [[ -n "$downloaded_file" ]]; then
+                    echo "$downloaded_file"
+                    return 0
+                fi
+            fi
+        done
+
+        print_warning "gh CLI download failed, trying curl..." >&2
     fi
 
     # Fallback to curl (public repos only)
-    print_info "Downloading release asset using curl..."
+    print_info "Downloading release asset using curl..." >&2
 
     local api_url
     if [[ "$version" == "latest" ]]; then
@@ -483,39 +489,82 @@ download_release_asset() {
         api_url="https://api.github.com/repos/${repo}/releases/tags/${version}"
     fi
 
-    # Get asset download URL
+    # Get asset download URL (try .tar.gz first, then .zip)
     local asset_url
-    asset_url=$(curl -s "$api_url" | grep -o '"browser_download_url": *"[^"]*\.tar\.gz"' | head -n1 | sed 's/"browser_download_url": *"//' | sed 's/"$//')
+    asset_url=$(curl -s "$api_url" | grep -oE '"browser_download_url": *"[^"]*\.(tar\.gz|tgz|zip)"' | head -n1 | sed 's/"browser_download_url": *"//' | sed 's/"$//')
 
     if [[ -z "$asset_url" ]]; then
-        print_error "Could not find release asset for $repo version $version"
+        print_error "Could not find release asset for $repo version $version" >&2
+        print_info "Ensure the release has a .tar.gz, .tgz, or .zip asset attached" >&2
         return 1
     fi
 
+    # Determine file extension from URL
+    local extension
+    if [[ "$asset_url" == *.zip ]]; then
+        extension="zip"
+    elif [[ "$asset_url" == *.tgz ]]; then
+        extension="tgz"
+    else
+        extension="tar.gz"
+    fi
+
     # Download the asset
-    local output_file="${output_dir}/${repo_name}-${version}.tar.gz"
-    if curl -L -o "$output_file" "$asset_url"; then
+    local output_file="${output_dir}/${repo_name}-${version}.${extension}"
+    if curl -sL -o "$output_file" "$asset_url"; then
         echo "$output_file"
         return 0
     else
-        print_error "Failed to download release asset"
+        print_error "Failed to download release asset" >&2
         return 1
     fi
 }
 
-# Extract a tarball to a directory
+# Extract a package (supports .tar.gz, .tgz, and .zip)
 extract_package() {
-    local tarball="$1"
+    local package_file="$1"
     local output_dir="$2"
 
     mkdir -p "$output_dir"
 
-    if tar -xzf "$tarball" -C "$output_dir"; then
-        return 0
-    else
-        print_error "Failed to extract package: $tarball"
-        return 1
+    # Determine file type and extract accordingly
+    case "$package_file" in
+        *.tar.gz|*.tgz)
+            if ! tar -xzf "$package_file" -C "$output_dir"; then
+                print_error "Failed to extract tarball: $package_file"
+                return 1
+            fi
+            ;;
+        *.zip)
+            if ! check_command_exists unzip; then
+                print_error "unzip is not installed (required for .zip files)"
+                print_info "Install with: sudo apt install unzip  # or: sudo dnf install unzip"
+                return 1
+            fi
+            if ! unzip -q "$package_file" -d "$output_dir"; then
+                print_error "Failed to extract zip: $package_file"
+                return 1
+            fi
+            ;;
+        *)
+            print_error "Unsupported package format: $package_file"
+            print_info "Supported formats: .tar.gz, .tgz, .zip"
+            return 1
+            ;;
+    esac
+
+    # Handle packages with a single root directory (common pattern)
+    # If extracted content has single directory, move its contents up
+    local items=("$output_dir"/*)
+    if [[ ${#items[@]} -eq 1 && -d "${items[0]}" ]]; then
+        local root_dir="${items[0]}"
+        # Move contents up and remove the empty root directory
+        mv "$root_dir"/* "$output_dir/" 2>/dev/null || true
+        mv "$root_dir"/.* "$output_dir/" 2>/dev/null || true
+        rmdir "$root_dir" 2>/dev/null || true
     fi
+
+    return 0
 }
 
 # -----------------------------------------------------------------------------
