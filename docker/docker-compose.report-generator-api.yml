@@ -1,0 +1,46 @@
+# =============================================================================
+# EZY Portal - Report Generator API
+# =============================================================================
+# Optional PDF report generation API service.
+# Install with: ./add-report-generator.sh api
+# =============================================================================
+
+services:
+  report-generator-api:
+    image: ghcr.io/ezy-prop/ezy-report-generator-api:${REPORT_GENERATOR_VERSION:-latest}
+    container_name: ezy-report-generator-api
+    restart: unless-stopped
+    networks:
+      - portal-network
+    volumes:
+      - ../report-generator/reports:/app/reports:ro
+      - ../report-generator/output:/app/output
+      - ../report-generator/logs/api:/app/logs
+    env_file:
+      - ../portal.env
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
+      - ASPNETCORE_URLS=http://+:5127
+      # Map portal.env Email__* to EmailServer__*
+      - EmailServer__Host=${Email__SmtpHost:-localhost}
+      - EmailServer__Port=${Email__SmtpPort:-587}
+      - EmailServer__UseSsl=${Email__UseSsl:-true}
+      - EmailServer__Username=${Email__Username:-}
+      - EmailServer__Password=${Email__Password:-}
+      - EmailServer__FromAddress=${Email__FromAddress:-noreply@example.com}
+      - EmailServer__FromName=${Email__FromName:-EzyReportGenerator}
+      - Api__AllowedOrigins__0=${CORS_ALLOWED_ORIGINS:-https://localhost}
+      # Uptime monitoring (disabled by default)
+      - UptimeKuma__Enabled=${UptimeKuma__Enabled:-false}
+      - UptimeKuma__ApiPushUrl=${UptimeKuma__ApiPushUrl:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5127/api/admin/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  portal-network:
+    external: true
+    name: ${PROJECT_NAME:-ezy-portal}-network

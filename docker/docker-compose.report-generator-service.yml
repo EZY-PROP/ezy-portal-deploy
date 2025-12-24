@@ -1,0 +1,36 @@
+# =============================================================================
+# EZY Portal - Report Generator Service (Scheduler)
+# =============================================================================
+# Optional background scheduler for scheduled report generation.
+# Install with: ./add-report-generator.sh service
+# =============================================================================
+
+services:
+  report-generator-service:
+    image: ghcr.io/ezy-prop/ezy-report-generator-service:${REPORT_GENERATOR_VERSION:-latest}
+    container_name: ezy-report-generator-service
+    restart: unless-stopped
+    command: ["scheduler"]
+    networks:
+      - portal-network
+    volumes:
+      - ../report-generator/reports:/app/reports:ro
+      - ../report-generator/output:/app/output
+      - ../report-generator/logs/service:/app/logs
+    env_file:
+      - ../portal.env
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
+      # Map portal.env Email__* to EmailServer__*
+      - EmailServer__Host=${Email__SmtpHost:-localhost}
+      - EmailServer__Port=${Email__SmtpPort:-587}
+      - EmailServer__UseSsl=${Email__UseSsl:-true}
+      - EmailServer__Username=${Email__Username:-}
+      - EmailServer__Password=${Email__Password:-}
+      - EmailServer__FromAddress=${Email__FromAddress:-noreply@example.com}
+      - EmailServer__FromName=${Email__FromName:-EzyReportGenerator}
+
+networks:
+  portal-network:
+    external: true
+    name: ${PROJECT_NAME:-ezy-portal}-network
