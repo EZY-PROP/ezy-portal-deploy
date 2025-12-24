@@ -1,0 +1,58 @@
+# =============================================================================
+# EZY Portal - Admin/Maintenance Overlay
+# =============================================================================
+# Exposes internal service ports on localhost (127.0.0.1) for maintenance access.
+# These ports are ONLY accessible from the server itself or via SSH tunnel.
+#
+# Usage:
+#   Enable:  ./admin-access.sh enable
+#   Disable: ./admin-access.sh disable
+#
+# SSH Tunnel Example (from your local machine):
+#   ssh -L 5432:127.0.0.1:5432 \
+#       -L 15672:127.0.0.1:15672 \
+#       -L 5127:127.0.0.1:5127 \
+#       user@cloud-server
+#
+# Then access locally:
+#   - PostgreSQL:    localhost:5432
+#   - RabbitMQ UI:   http://localhost:15672
+#   - Report API:    http://localhost:5127/api/admin/health
+#
+# SECURITY NOTE: Only enable when needed for maintenance, disable when done.
+# =============================================================================
+
+services:
+  # PostgreSQL Database
+  # Default credentials in portal.env (POSTGRES_USER, POSTGRES_PASSWORD)
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  # Redis Cache
+  # No auth by default, use redis-cli
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  # RabbitMQ Management UI
+  # Default credentials: portal / (RABBITMQ_PASSWORD from portal.env)
+  # Management UI: http://localhost:15672
+  rabbitmq:
+    ports:
+      - "127.0.0.1:5672:5672"    # AMQP protocol
+      - "127.0.0.1:15672:15672"  # Management UI
+
+  # Report Generator API (if installed)
+  # Health: http://localhost:5127/api/admin/health
+  # Swagger: http://localhost:5127/swagger
+  report-generator-api:
+    ports:
+      - "127.0.0.1:5127:5127"
+
+  # Portal Backend API (direct access, bypassing nginx)
+  # Health: http://localhost:8080/health
+  # Swagger: http://localhost:8080/swagger
+  portal:
+    ports:
+      - "127.0.0.1:8080:8080"
