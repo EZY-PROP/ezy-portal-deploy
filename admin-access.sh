@@ -108,6 +108,12 @@ enable_admin() {
         exit 1
     fi
 
+    # Load config to get PROJECT_NAME
+    if [[ -f "$SCRIPT_DIR/portal.env" ]]; then
+        source "$SCRIPT_DIR/lib/config.sh"
+        load_config "$SCRIPT_DIR/portal.env"
+    fi
+
     local compose_args
     compose_args=$(get_compose_args)
 
@@ -152,6 +158,12 @@ enable_admin() {
 
 disable_admin() {
     print_section "Disabling Admin Access"
+
+    # Load config to get PROJECT_NAME
+    if [[ -f "$SCRIPT_DIR/portal.env" ]]; then
+        source "$SCRIPT_DIR/lib/config.sh"
+        load_config "$SCRIPT_DIR/portal.env"
+    fi
 
     local compose_args
     compose_args=$(get_compose_args)
