@@ -180,24 +180,24 @@ run_config_wizard() {
 }
 
 prompt_infrastructure_type() {
-    echo ""
-    print_info "Choose your infrastructure deployment mode:"
-    echo ""
-    echo "  1. Full Infrastructure (Recommended for new deployments)"
-    echo "     - Deploy PostgreSQL, Redis, RabbitMQ as containers"
-    echo "     - Everything managed together with portal"
-    echo ""
-    echo "  2. External Infrastructure"
-    echo "     - Use your existing PostgreSQL, Redis, RabbitMQ"
-    echo "     - Portal connects to external services"
-    echo ""
+    echo "" >&2
+    print_info "Choose your infrastructure deployment mode:" >&2
+    echo "" >&2
+    echo "  1. Full Infrastructure (Recommended for new deployments)" >&2
+    echo "     - Deploy PostgreSQL, Redis, RabbitMQ as containers" >&2
+    echo "     - Everything managed together with portal" >&2
+    echo "" >&2
+    echo "  2. External Infrastructure" >&2
+    echo "     - Use your existing PostgreSQL, Redis, RabbitMQ" >&2
+    echo "     - Portal connects to external services" >&2
+    echo "" >&2
 
     while true; do
         read -r -p "Enter choice [1-2]: " choice
         case $choice in
             1) echo "full"; return 0 ;;
             2) echo "external"; return 0 ;;
-            *) print_error "Invalid choice" ;;
+            *) print_error "Invalid choice" >&2 ;;
         esac
     done
 }
