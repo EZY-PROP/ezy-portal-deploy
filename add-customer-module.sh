@@ -423,8 +423,8 @@ main() {
     echo "  Version:     $MODULE_VERSION"
     echo "  API URL:     $app_url$MODULE_API_PREFIX/"
     echo "  MFE URL:     $app_url$MODULE_MFE_PREFIX/"
-    echo "  Container:   ${PROJECT_NAME:-ezy-portal}-$MODULE_NAME"
-    echo "  Logs:        docker logs ${PROJECT_NAME:-ezy-portal}-$MODULE_NAME"
+    echo "  Container:   $MODULE_NAME"
+    echo "  Logs:        docker logs $MODULE_NAME"
     echo ""
 
     log_info "Customer module added: $MODULE_NAME v$MODULE_VERSION"

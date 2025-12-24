@@ -578,6 +578,7 @@ get_customer_compose_file() {
 }
 
 # Copy and process docker-compose file from package
+# Substitutes actual image:tag and fixes container name
 install_customer_compose_file() {
     local package_dir="$1"
     local module_name="$2"
@@ -591,7 +592,22 @@ install_customer_compose_file() {
         return 1
     fi
 
+    # Copy the file first
     cp "$source_file" "$target_file"
+
+    # Substitute the image line with actual image:tag from manifest
+    # This prevents docker showing SHA hashes instead of proper tags
+    if [[ -n "$MODULE_IMAGE_REPO" && -n "$MODULE_IMAGE_TAG" ]]; then
+        # Replace image line (handles various formats)
+        sed -i "s|image:.*${module_name}.*|image: ${MODULE_IMAGE_REPO}:${MODULE_IMAGE_TAG}|" "$target_file"
+        print_info "Image set to: ${MODULE_IMAGE_REPO}:${MODULE_IMAGE_TAG}"
+    fi
+
+    # Simplify container name to just the module name (no PROJECT_NAME prefix)
+    # This makes container names cleaner and consistent
+    sed -i "s|container_name:.*${module_name}.*|container_name: ${module_name}|" "$target_file"
+    print_info "Container name set to: ${module_name}"
+
     print_success "Installed compose file: $target_file"
 
     return 0
@@ -654,12 +670,13 @@ start_customer_module() {
 # Stop a customer module
 stop_customer_module() {
     local module_name="$1"
-    local project_name="${PROJECT_NAME:-ezy-portal}"
-    local container="${project_name}-${module_name}"
+    # Customer modules use simple container names (no PROJECT_NAME prefix)
+    local container="$module_name"
 
-    if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+    if docker ps -a --format '{{.Names}}' | grep -q "^${container}$"; then
         print_info "Stopping customer module: $module_name"
-        docker stop "$container" && docker rm "$container"
+        docker stop "$container" 2>/dev/null || true
+        docker rm "$container" 2>/dev/null || true
         print_success "Customer module '$module_name' stopped"
     else
         print_info "Customer module '$module_name' is not running"
@@ -671,8 +688,8 @@ stop_customer_module() {
 # Wait for customer module to become healthy
 wait_for_customer_module_healthy() {
     local module_name="$1"
-    local project_name="${PROJECT_NAME:-ezy-portal}"
-    local container="${project_name}-${module_name}"
+    # Customer modules use simple container names (no PROJECT_NAME prefix)
+    local container="$module_name"
     local timeout="${2:-120}"
 
     print_info "Waiting for $module_name to be healthy (timeout: ${timeout}s)..."
