@@ -152,6 +152,17 @@ run_config_wizard() {
 
     save_config_value "INFRASTRUCTURE_MODE" "$infra_mode" "$config_file"
 
+    # Determine tenant mode
+    local tenant_mode
+    tenant_mode=$(prompt_tenant_mode)
+
+    if [[ "$tenant_mode" == "single" ]]; then
+        save_config_value "SINGLE_TENANT_MODE" "true" "$config_file"
+        prompt_single_tenant_config "$config_file"
+    else
+        save_config_value "SINGLE_TENANT_MODE" "false" "$config_file"
+    fi
+
     # Database configuration
     prompt_database_config "$config_file" "$infra_mode"
 
@@ -200,6 +211,77 @@ prompt_infrastructure_type() {
             *) print_error "Invalid choice" >&2 ;;
         esac
     done
+}
+
+prompt_tenant_mode() {
+    echo "" >&2
+    print_info "Choose your deployment mode:" >&2
+    echo "" >&2
+    echo "  1. Single-Tenant Mode (Recommended)" >&2
+    echo "     - One organization using the portal" >&2
+    echo "     - Simplified setup, no tenant management UI" >&2
+    echo "" >&2
+    echo "  2. Multi-Tenant Mode" >&2
+    echo "     - Multiple organizations with separate subdomains" >&2
+    echo "     - Full tenant management features" >&2
+    echo "" >&2
+
+    while true; do
+        read -r -p "Enter choice [1-2]: " choice
+        case $choice in
+            1) echo "single"; return 0 ;;
+            2) echo "multi"; return 0 ;;
+            *) print_error "Invalid choice" >&2 ;;
+        esac
+    done
+}
+
+prompt_single_tenant_config() {
+    local config_file="$1"
+
+    print_subsection "Single-Tenant Configuration"
+
+    local tenant_name tenant_subdomain
+
+    prompt_input "Organization name" "My Organization" tenant_name
+    save_config_value "DEFAULT_TENANT_NAME" "\"$tenant_name\"" "$config_file"
+
+    prompt_input "Tenant subdomain (used in URLs)" "app" tenant_subdomain
+    save_config_value "DEFAULT_TENANT_SUBDOMAIN" "$tenant_subdomain" "$config_file"
+
+    # External Accounts (B2B Portal)
+    echo ""
+    if confirm "Enable External Accounts (B2B Portal)?" "n"; then
+        save_config_value "SINGLE_TENANT_EXTERNAL_ACCOUNTS_ENABLED" "true" "$config_file"
+
+        echo ""
+        print_info "Choose account linking mode:" >&2
+        echo "  1. Standalone - Accounts managed independently with local data" >&2
+        echo "  2. BPLinked - Accounts linked to Business Partner microservice" >&2
+        echo ""
+
+        while true; do
+            read -r -p "Enter choice [1-2]: " linking_choice
+            case $linking_choice in
+                1)
+                    save_config_value "ACCOUNT_LINKING_MODE" "Standalone" "$config_file"
+                    break
+                    ;;
+                2)
+                    save_config_value "ACCOUNT_LINKING_MODE" "BPLinked" "$config_file"
+                    break
+                    ;;
+                *)
+                    print_error "Invalid choice"
+                    ;;
+            esac
+        done
+    else
+        save_config_value "SINGLE_TENANT_EXTERNAL_ACCOUNTS_ENABLED" "false" "$config_file"
+        save_config_value "ACCOUNT_LINKING_MODE" "Standalone" "$config_file"
+    fi
+
+    print_success "Single-tenant configuration complete"
 }
 
 prompt_database_config() {
