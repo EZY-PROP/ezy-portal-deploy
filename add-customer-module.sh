@@ -8,6 +8,7 @@
 #   ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool
 #   ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --version 1.0.0
 #   ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --api-key <key>
+#   ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --restart
 #   ./add-customer-module.sh --from-file ./package.tar.gz
 #
 # The portal must be running before adding customer modules.
@@ -34,6 +35,7 @@ PACKAGE_VERSION="latest"
 API_KEY=""
 FROM_FILE=""
 UPGRADE_MODE=false
+RESTART_MODE=false
 VERSION="${VERSION:-latest}"
 
 # -----------------------------------------------------------------------------
@@ -70,6 +72,10 @@ parse_arguments() {
                 UPGRADE_MODE=true
                 shift
                 ;;
+            --restart|-r)
+                RESTART_MODE=true
+                shift
+                ;;
             --help|-h)
                 show_help
                 exit 0
@@ -81,10 +87,16 @@ parse_arguments() {
         esac
     done
 
-    # Validate we have either repo or from-file
+    # Validate we have either repo or from-file (restart mode only needs repo)
     if [[ -z "$GITHUB_REPO" && -z "$FROM_FILE" ]]; then
         print_error "Must specify either a GitHub repo or --from-file"
         show_help
+        exit 1
+    fi
+
+    # Restart mode only needs repo name
+    if [[ "$RESTART_MODE" == "true" && -z "$GITHUB_REPO" ]]; then
+        print_error "--restart requires a GitHub repo name (e.g., ezy-prop/module-name)"
         exit 1
     fi
 }
@@ -103,6 +115,7 @@ show_help() {
     echo "  --api-key KEY        API key for the module (optional - auto-provisioned if not provided)"
     echo "  --from-file FILE     Install from local package (.tar.gz, .tgz, or .zip)"
     echo "  --upgrade, -u        Upgrade module if already running (no confirmation)"
+    echo "  --restart, -r        Restart module to reload portal.env configuration"
     echo "  --help, -h           Show this help message"
     echo ""
     echo "Examples:"
@@ -112,8 +125,8 @@ show_help() {
     echo "  # Install specific version"
     echo "  ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --version v1.0.0"
     echo ""
-    echo "  # Install with explicit API key"
-    echo "  ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --api-key abc123"
+    echo "  # Restart to reload configuration"
+    echo "  ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --restart"
     echo ""
     echo "  # Install from local zip file"
     echo "  ./add-customer-module.sh --from-file ./quotation-tool-1.0.0.zip"
@@ -322,6 +335,32 @@ main() {
     # GHCR login
     print_subsection "GitHub Container Registry"
     check_ghcr_login || exit 1
+
+    # Restart mode: just restart the container to reload portal.env
+    if [[ "$RESTART_MODE" == "true" ]]; then
+        local module_name="${GITHUB_REPO##*/}"
+        local compose_file
+        compose_file=$(get_customer_compose_file "$module_name")
+
+        if [[ ! -f "$compose_file" ]]; then
+            print_error "Module '$module_name' is not installed (compose file not found)"
+            exit 1
+        fi
+
+        print_section "Restarting Module: $module_name"
+        print_info "Reloading configuration from portal.env..."
+
+        # Stop and start the container
+        stop_customer_module "$module_name"
+        start_customer_module "$module_name"
+
+        # Wait for healthy
+        wait_for_customer_module_healthy "$module_name" 120 || true
+
+        echo ""
+        print_success "Restart complete! $module_name reloaded with new configuration"
+        exit 0
+    fi
 
     # Quick upgrade path: when --upgrade and compose file exists with local image available
     if [[ "$UPGRADE_MODE" == "true" && -n "$GITHUB_REPO" ]]; then
