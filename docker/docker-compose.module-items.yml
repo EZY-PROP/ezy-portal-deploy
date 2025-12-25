@@ -10,7 +10,7 @@ services:
   # Items Micro-Frontend
   # ---------------------------------------------------------------------------
   items:
-    image: ${ITEMS_IMAGE:-ghcr.io/ezy-prop/ezy-portal-items/ezy-portal-items}:${VERSION:-latest}
+    image: ${ITEMS_IMAGE:-ghcr.io/ezy-prop/ezy-portal-items}:${VERSION:-latest}
     container_name: ${PROJECT_NAME:-ezy-portal}-items
     expose:
       - "5009"
