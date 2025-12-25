@@ -10,6 +10,11 @@ if [[ -z "${NC:-}" ]]; then
     source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 fi
 
+# Source api-keys.sh if not already loaded
+if ! declare -f get_or_provision_api_key &>/dev/null; then
+    source "$(dirname "${BASH_SOURCE[0]}")/api-keys.sh"
+fi
+
 # -----------------------------------------------------------------------------
 # Constants
 # -----------------------------------------------------------------------------
@@ -710,10 +715,11 @@ wait_for_customer_module_healthy() {
 }
 
 # -----------------------------------------------------------------------------
-# API Key Management
+# API Key Management (uses lib/api-keys.sh)
 # -----------------------------------------------------------------------------
 
 # Save API key for customer module
+# Uses the consolidated api-keys.sh library
 save_customer_module_api_key() {
     local module_name="$1"
     local api_key="$2"
@@ -725,74 +731,6 @@ save_customer_module_api_key() {
         env_var_name=$(echo "${module_name}_API_KEY" | tr '[:lower:]-' '[:upper:]_')
     fi
 
-    local portal_env="${DEPLOY_ROOT}/portal.env"
-
-    # Priority 1: Use explicitly provided API key
-    if [[ -n "$api_key" ]]; then
-        if grep -q "^${env_var_name}=" "$portal_env" 2>/dev/null; then
-            sed -i "s|^${env_var_name}=.*|${env_var_name}=${api_key}|" "$portal_env"
-        else
-            echo "${env_var_name}=${api_key}" >> "$portal_env"
-        fi
-        print_success "API key saved to portal.env as ${env_var_name}"
-        return 0
-    fi
-
-    # Priority 2: Check if already set
-    local existing
-    existing=$(grep "^${env_var_name}=" "$portal_env" 2>/dev/null | cut -d= -f2)
-    if [[ -n "$existing" ]]; then
-        print_info "Using existing API key from portal.env"
-        return 0
-    fi
-
-    # Priority 3: Auto-provision
-    print_info "No API key provided, attempting auto-provision..."
-
-    # Import provision function from add-module.sh pattern
-    local deployment_secret
-    deployment_secret=$(grep "^DEPLOYMENT_SECRET=" "$portal_env" 2>/dev/null | cut -d= -f2-)
-
-    if [[ -z "$deployment_secret" ]]; then
-        print_warning "DEPLOYMENT_SECRET not set, cannot auto-provision API key"
-        print_info "Generate an API key in Portal Admin -> API Keys"
-        print_info "Then run: ./add-customer-module.sh ... --api-key <key>"
-        return 1
-    fi
-
-    local app_url
-    app_url=$(grep "^APPLICATION_URL=" "$portal_env" 2>/dev/null | cut -d= -f2-)
-    app_url="${app_url:-https://localhost}"
-
-    print_info "Provisioning API key for: $module_name"
-
-    local response
-    response=$(curl -s -k -X POST "${app_url}/api/service-api-keys/provision" \
-        -H "X-Deployment-Secret: ${deployment_secret}" \
-        -H "Content-Type: application/json" \
-        -d "{\"serviceName\": \"${module_name}\"}" \
-        --connect-timeout 10 \
-        --max-time 30 2>&1)
-
-    if echo "$response" | grep -q '"apiKey"'; then
-        local provisioned_key
-        provisioned_key=$(echo "$response" | grep -o '"apiKey"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"apiKey"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
-
-        if [[ -n "$provisioned_key" ]]; then
-            echo "${env_var_name}=${provisioned_key}" >> "$portal_env"
-            print_success "API key auto-provisioned and saved"
-            return 0
-        fi
-    fi
-
-    # Check if key already exists
-    if echo "$response" | grep -q '"isNewKey"[[:space:]]*:[[:space:]]*false'; then
-        print_info "API key already exists on server"
-        print_info "Retrieve it from Portal Admin -> API Keys"
-        return 1
-    fi
-
-    print_warning "API key auto-provision failed"
-    print_info "Generate an API key in Portal Admin -> API Keys"
-    return 1
+    # Use the consolidated function from lib/api-keys.sh
+    get_or_provision_api_key "$module_name" "$env_var_name" "$api_key"
 }

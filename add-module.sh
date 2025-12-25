@@ -28,6 +28,8 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/checks.sh"
 source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/docker.sh"
+source "$SCRIPT_DIR/lib/api-keys.sh"
+source "$SCRIPT_DIR/lib/module-installer.sh"
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -79,6 +81,11 @@ parse_arguments() {
                 VERSION="$2"
                 shift 2
                 ;;
+            --debug)
+                DEBUG=true
+                export DEBUG
+                shift
+                ;;
             --help|-h)
                 show_help
                 exit 0
@@ -104,6 +111,7 @@ show_help() {
     echo "Options:"
     echo "  --api-key KEY    API key for the module (optional - auto-provisioned if not provided)"
     echo "  --version VER    Image version tag (default: latest)"
+    echo "  --debug          Enable debug output"
     echo "  --help, -h       Show this help message"
     echo ""
     echo "API Key Provisioning:"
@@ -119,65 +127,17 @@ show_help() {
 }
 
 # -----------------------------------------------------------------------------
-# Checks
+# Module-specific Checks
 # -----------------------------------------------------------------------------
-check_portal_running() {
-    local project_name="${PROJECT_NAME:-ezy-portal}"
-    local container="$project_name"
-
-    if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-        print_error "Portal is not running"
-        print_info "Start the portal first with: ./install.sh"
-        return 1
-    fi
-
-    local health
-    health=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "none")
-
-    if [[ "$health" != "healthy" ]]; then
-        print_warning "Portal is running but not healthy (status: $health)"
-        if ! confirm "Continue anyway?" "n"; then
-            exit 1
-        fi
-    fi
-
-    print_success "Portal is running and healthy"
-    return 0
-}
-
-check_dependencies() {
+check_module_dependencies_for() {
     local module="$1"
     local deps="${MODULE_DEPENDENCIES[$module]}"
-    local project_name="${PROJECT_NAME:-ezy-portal}"
 
     if [[ -z "$deps" ]]; then
         return 0
     fi
 
-    print_info "Checking dependencies for $module..."
-
-    IFS=',' read -ra dep_array <<< "$deps"
-    for dep in "${dep_array[@]}"; do
-        dep=$(echo "$dep" | xargs)
-        local container="${project_name}-${dep}"
-
-        if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-            print_error "Required module '$dep' is not running"
-            print_info "Add it first with: ./add-module.sh $dep --api-key <key>"
-            return 1
-        fi
-
-        local health
-        health=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "none")
-
-        if [[ "$health" == "healthy" ]]; then
-            print_success "Dependency '$dep' is running and healthy"
-        else
-            print_warning "Dependency '$dep' is running but not healthy"
-        fi
-    done
-
-    return 0
+    check_module_dependencies "$deps"
 }
 
 check_module_not_running() {
@@ -185,137 +145,18 @@ check_module_not_running() {
     local project_name="${PROJECT_NAME:-ezy-portal}"
     local container="${project_name}-${module}"
 
-    if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-        print_warning "Module '$module' is already running"
-        if confirm "Recreate the container?" "n"; then
-            return 0
-        fi
-        exit 0
-    fi
-
-    return 0
+    check_not_running "$container"
 }
 
 # -----------------------------------------------------------------------------
-# Main Logic
+# API Key Handling (uses lib/api-keys.sh)
 # -----------------------------------------------------------------------------
-
-# Provision an API key via the backend API using deployment secret
-provision_api_key() {
-    local module="$1"
-    local deployment_secret="${DEPLOYMENT_SECRET:-}"
-    local app_url="${APPLICATION_URL:-https://localhost}"
-
-    if [[ -z "$deployment_secret" ]]; then
-        print_warning "DEPLOYMENT_SECRET not set, cannot auto-provision API key" >&2
-        return 1
-    fi
-
-    print_info "Auto-provisioning API key for module: $module" >&2
-
-    # Call the provision endpoint
-    local response
-    response=$(curl -s -k -X POST "${app_url}/api/service-api-keys/provision" \
-        -H "X-Deployment-Secret: ${deployment_secret}" \
-        -H "Content-Type: application/json" \
-        -d "{\"serviceName\": \"${module}\"}" \
-        --connect-timeout 10 \
-        --max-time 30 2>&1)
-
-    local curl_exit=$?
-    if [[ $curl_exit -ne 0 ]]; then
-        print_warning "Failed to connect to portal API: curl exit code $curl_exit" >&2
-        return 1
-    fi
-
-    # Check for error responses
-    if echo "$response" | grep -q '"message".*"Invalid deployment secret"'; then
-        print_error "Invalid deployment secret" >&2
-        return 1
-    fi
-
-    if echo "$response" | grep -q '"message".*"not configured"'; then
-        print_warning "Deployment secret not configured on server" >&2
-        return 1
-    fi
-
-    # Extract API key from response (only present if isNewKey=true)
-    local api_key
-    api_key=$(echo "$response" | grep -o '"apiKey"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/"apiKey"[[:space:]]*:[[:space:]]*"\([^"]*\)"/\1/')
-
-    local is_new_key
-    is_new_key=$(echo "$response" | grep -o '"isNewKey"[[:space:]]*:[[:space:]]*[a-z]*' | sed 's/"isNewKey"[[:space:]]*:[[:space:]]*//')
-
-    if [[ "$is_new_key" == "true" ]] && [[ -n "$api_key" ]]; then
-        print_success "API key provisioned successfully" >&2
-        echo "$api_key"
-        return 0
-    elif [[ "$is_new_key" == "false" ]]; then
-        print_info "API key already exists for this module" >&2
-        # Return empty - caller should check portal.env or use existing
-        return 0
-    else
-        print_warning "Unexpected response from provision API" >&2
-        log_info "Provision response: $response" >&2
-        return 1
-    fi
-}
-
-save_api_key() {
+handle_api_key() {
     local module="$1"
     local api_key="$2"
     local var_name="${MODULE_API_KEY_VARS[$module]}"
 
-    # Priority 1: Use explicitly provided API key
-    if [[ -n "$api_key" ]]; then
-        # Update or add the API key in portal.env
-        if grep -q "^${var_name}=" "$DEPLOY_ROOT/portal.env" 2>/dev/null; then
-            sed -i "s|^${var_name}=.*|${var_name}=${api_key}|" "$DEPLOY_ROOT/portal.env"
-        else
-            echo "${var_name}=${api_key}" >> "$DEPLOY_ROOT/portal.env"
-        fi
-        print_success "API key saved to portal.env"
-        return 0
-    fi
-
-    # Priority 2: Check if already set in env file
-    local existing
-    existing=$(grep "^${var_name}=" "$DEPLOY_ROOT/portal.env" 2>/dev/null | cut -d= -f2)
-    if [[ -n "$existing" ]]; then
-        print_info "Using existing API key from portal.env"
-        return 0
-    fi
-
-    # Priority 3: Auto-provision via deployment secret
-    print_info "No API key provided, attempting auto-provision..."
-    local provisioned_key
-    provisioned_key=$(provision_api_key "$module")
-    local provision_result=$?
-
-    if [[ $provision_result -eq 0 ]] && [[ -n "$provisioned_key" ]]; then
-        # Save the newly provisioned key
-        echo "${var_name}=${provisioned_key}" >> "$DEPLOY_ROOT/portal.env"
-        print_success "Auto-provisioned API key saved to portal.env"
-        return 0
-    elif [[ $provision_result -eq 0 ]]; then
-        # Key exists on server but we don't have it locally - check again
-        existing=$(grep "^${var_name}=" "$DEPLOY_ROOT/portal.env" 2>/dev/null | cut -d= -f2)
-        if [[ -n "$existing" ]]; then
-            print_info "Using existing API key from portal.env"
-            return 0
-        fi
-        print_warning "API key exists on server but not in portal.env"
-        print_info "Please retrieve it from Portal Admin -> API Keys"
-        return 1
-    fi
-
-    # Auto-provision failed, fall back to manual instructions
-    print_error "API key is required for module '$module'"
-    print_info "Options:"
-    print_info "  1. Run with --api-key: ./add-module.sh $module --api-key <key>"
-    print_info "  2. Generate in Portal Admin -> API Keys"
-    print_info "  3. Ensure DEPLOYMENT_SECRET is set for auto-provisioning"
-    return 1
+    get_or_provision_api_key "$module" "$var_name" "$api_key"
 }
 
 start_module() {
@@ -381,17 +222,8 @@ wait_for_module_healthy() {
     local module="$1"
     local project_name="${PROJECT_NAME:-ezy-portal}"
     local container="${project_name}-${module}"
-    local timeout=120
 
-    print_info "Waiting for $module to be healthy..."
-
-    if wait_for_healthy "$container" "$timeout"; then
-        return 0
-    else
-        print_warning "Module did not become healthy within ${timeout}s"
-        print_info "Check logs: docker logs $container"
-        return 1
-    fi
+    wait_for_container_healthy "$container" 120
 }
 
 # -----------------------------------------------------------------------------
@@ -413,12 +245,15 @@ main() {
     fi
 
     # Pre-flight checks
+    print_section "Prerequisites"
+    check_docker_installed || exit 1
+    check_docker_running || exit 1
     check_portal_running || exit 1
-    check_dependencies "$MODULE" || exit 1
+    check_module_dependencies_for "$MODULE" || exit 1
     check_module_not_running "$MODULE"
 
-    # Save API key
-    save_api_key "$MODULE" "$API_KEY" || exit 1
+    # Handle API key
+    handle_api_key "$MODULE" "$API_KEY" || exit 1
 
     # Pull/verify image
     print_section "Preparing Image"

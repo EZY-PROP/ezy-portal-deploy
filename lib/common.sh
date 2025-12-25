@@ -13,6 +13,10 @@ export BLUE='\033[0;34m'
 export CYAN='\033[0;36m'
 export NC='\033[0m' # No Color
 export BOLD='\033[1m'
+export DIM='\033[2m'
+
+# Debug mode (set DEBUG=true or use --debug flag)
+DEBUG="${DEBUG:-false}"
 
 # Get the root directory of the deployment package
 get_deploy_root() {
@@ -97,6 +101,21 @@ log_warning() {
 
 log_error() {
     log_to_file "ERROR: $1"
+}
+
+log_debug() {
+    if [[ "$DEBUG" == "true" ]]; then
+        log_to_file "DEBUG: $1"
+    fi
+}
+
+# Print debug message to console and log file
+# Usage: debug "message"
+debug() {
+    if [[ "$DEBUG" == "true" ]]; then
+        echo -e "${DIM}[DEBUG] $1${NC}" >&2
+        log_to_file "DEBUG: $1"
+    fi
 }
 
 # -----------------------------------------------------------------------------

@@ -24,6 +24,7 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/checks.sh"
 source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/docker.sh"
+source "$SCRIPT_DIR/lib/module-installer.sh"
 
 # -----------------------------------------------------------------------------
 # Configuration
@@ -56,6 +57,11 @@ parse_arguments() {
                 REPORT_GENERATOR_VERSION="$2"
                 shift 2
                 ;;
+            --debug)
+                DEBUG=true
+                export DEBUG
+                shift
+                ;;
             --help|-h)
                 show_help
                 exit 0
@@ -82,6 +88,7 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --version VER    Image version tag (default: latest)"
+    echo "  --debug          Enable debug output"
     echo "  --help, -h       Show this help message"
     echo ""
     echo "Examples:"
@@ -96,48 +103,14 @@ show_help() {
 }
 
 # -----------------------------------------------------------------------------
-# Checks
+# Checks (uses lib/module-installer.sh)
 # -----------------------------------------------------------------------------
-check_portal_running() {
-    local project_name="${PROJECT_NAME:-ezy-portal}"
-    local container="$project_name"
-
-    if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-        print_error "Portal is not running"
-        print_info "Start the portal first with: ./install.sh"
-        return 1
-    fi
-
-    local health
-    health=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "none")
-
-    if [[ "$health" != "healthy" ]]; then
-        print_warning "Portal is running but not healthy (status: $health)"
-        if ! confirm "Continue anyway?" "n"; then
-            exit 1
-        fi
-    fi
-
-    print_success "Portal is running and healthy"
-    return 0
-}
-
 check_service_not_running() {
     local service_name="$1"
     local project_name="${PROJECT_NAME:-ezy-portal}"
     local container="${project_name}-report-generator-${service_name}"
 
-    if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-        print_warning "Report generator $service_name is already running"
-        if confirm "Recreate the container?" "n"; then
-            docker stop "$container" 2>/dev/null || true
-            docker rm "$container" 2>/dev/null || true
-            return 0
-        fi
-        return 1
-    fi
-
-    return 0
+    check_not_running "$container"
 }
 
 # -----------------------------------------------------------------------------
@@ -213,37 +186,19 @@ start_service() {
     fi
 }
 
-wait_for_healthy() {
+wait_for_service_healthy() {
     local service_name="$1"
     local project_name="${PROJECT_NAME:-ezy-portal}"
     local container="${project_name}-report-generator-${service_name}"
-    local timeout=120
 
-    # Service container has no health check
+    # Scheduler service container has no health check
     if [[ "$service_name" == "service" ]]; then
         print_info "Scheduler service started (no health check)"
         return 0
     fi
 
-    print_info "Waiting for report-generator-${service_name} to be healthy..."
-
-    local elapsed=0
-    while [[ $elapsed -lt $timeout ]]; do
-        local health
-        health=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "none")
-
-        if [[ "$health" == "healthy" ]]; then
-            print_success "Report generator $service_name is healthy"
-            return 0
-        fi
-
-        sleep 5
-        elapsed=$((elapsed + 5))
-    done
-
-    print_warning "Report generator $service_name did not become healthy within ${timeout}s"
-    print_info "Check logs: docker logs $container"
-    return 1
+    # Use library function for API service
+    wait_for_container_healthy "$container" 120
 }
 
 # -----------------------------------------------------------------------------
@@ -316,7 +271,7 @@ main() {
     # Wait for healthy
     print_section "Step 5: Health Check"
     for svc in "${services[@]}"; do
-        wait_for_healthy "$svc" || true
+        wait_for_service_healthy "$svc" || true
     done
 
     # Success output

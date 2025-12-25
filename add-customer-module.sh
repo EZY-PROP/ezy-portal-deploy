@@ -25,6 +25,8 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/checks.sh"
 source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/docker.sh"
+source "$SCRIPT_DIR/lib/api-keys.sh"
+source "$SCRIPT_DIR/lib/module-installer.sh"
 source "$SCRIPT_DIR/lib/customer-module.sh"
 
 # -----------------------------------------------------------------------------
@@ -76,6 +78,11 @@ parse_arguments() {
                 RESTART_MODE=true
                 shift
                 ;;
+            --debug)
+                DEBUG=true
+                export DEBUG
+                shift
+                ;;
             --help|-h)
                 show_help
                 exit 0
@@ -116,6 +123,7 @@ show_help() {
     echo "  --from-file FILE     Install from local package (.tar.gz, .tgz, or .zip)"
     echo "  --upgrade, -u        Upgrade module if already running (no confirmation)"
     echo "  --restart, -r        Restart module to reload portal.env configuration"
+    echo "  --debug              Enable debug output"
     echo "  --help, -h           Show this help message"
     echo ""
     echo "Examples:"
@@ -154,29 +162,9 @@ check_prerequisites() {
     return 0
 }
 
+# Use check_portal_running from lib/module-installer.sh
 check_portal_is_running() {
-    local project_name="${PROJECT_NAME:-ezy-portal}"
-    local container="$project_name"
-
-    if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-        print_error "Portal is not running"
-        print_info "Start the portal first with: ./install.sh"
-        return 1
-    fi
-
-    local health
-    health=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "none")
-
-    if [[ "$health" != "healthy" ]]; then
-        print_warning "Portal is running but not healthy (status: $health)"
-        if ! confirm "Continue anyway?" "n"; then
-            exit 1
-        fi
-    else
-        print_success "Portal is running and healthy"
-    fi
-
-    return 0
+    check_portal_running
 }
 
 check_module_not_already_running() {

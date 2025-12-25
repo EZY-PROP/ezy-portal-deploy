@@ -76,6 +76,11 @@ parse_arguments() {
                 SKIP_SSL=true
                 shift
                 ;;
+            --debug)
+                DEBUG=true
+                export DEBUG
+                shift
+                ;;
             --help|-h)
                 show_help
                 exit 0
@@ -100,6 +105,7 @@ show_help() {
     echo "  --external-infra      Use existing external infrastructure"
     echo "  --non-interactive     Skip prompts, use defaults or existing config"
     echo "  --skip-ssl            Skip SSL certificate setup"
+    echo "  --debug               Enable debug output"
     echo "  --help, -h            Show this help message"
     echo ""
     echo "Environment Variables:"
