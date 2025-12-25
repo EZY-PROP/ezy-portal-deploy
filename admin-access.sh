@@ -158,7 +158,7 @@ get_compose_args() {
     done
 
     # Add report generator if running
-    if docker ps --format '{{.Names}}' | grep -q "^ezy-report-generator-api$"; then
+    if docker ps --format '{{.Names}}' | grep -q "^${project_name}-report-generator-api$"; then
         local rg_compose="$SCRIPT_DIR/docker/docker-compose.report-generator-api.yml"
         if [[ -f "$rg_compose" ]]; then
             args="$args -f $rg_compose"
