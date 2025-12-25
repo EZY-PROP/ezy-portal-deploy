@@ -149,11 +149,19 @@ list_local_images() {
 get_compose_file() {
     local infra_mode="${1:-full}"
     local deploy_root="${DEPLOY_ROOT:-$(get_deploy_root)}"
+    local base_file
 
     if [[ "$infra_mode" == "full" ]]; then
-        echo "${deploy_root}/docker/docker-compose.full.yml"
+        base_file="${deploy_root}/docker/docker-compose.full.yml"
     else
-        echo "${deploy_root}/docker/docker-compose.portal-only.yml"
+        base_file="${deploy_root}/docker/docker-compose.portal-only.yml"
+    fi
+
+    # Append limits overlay if high-performance mode is enabled
+    if [[ "${PERF_MODE:-}" == "high" ]]; then
+        echo "${base_file} -f ${deploy_root}/docker/docker-compose.limits.yml"
+    else
+        echo "$base_file"
     fi
 }
 

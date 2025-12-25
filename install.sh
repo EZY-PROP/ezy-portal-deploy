@@ -49,6 +49,7 @@ PROJECT_NAME="${PROJECT_NAME:-ezy-portal}"
 INFRASTRUCTURE_MODE=""
 INTERACTIVE=true
 SKIP_SSL=false
+PERF_MODE="${PERF_MODE:-}"
 
 # -----------------------------------------------------------------------------
 # Parse Command Line Arguments
@@ -81,6 +82,11 @@ parse_arguments() {
                 export DEBUG
                 shift
                 ;;
+            --perf-mode)
+                PERF_MODE="$2"
+                export PERF_MODE
+                shift 2
+                ;;
             --help|-h)
                 show_help
                 exit 0
@@ -92,6 +98,12 @@ parse_arguments() {
                 ;;
         esac
     done
+
+    # Validate perf-mode if provided
+    if [[ -n "$PERF_MODE" ]] && [[ "$PERF_MODE" != "high" ]] && [[ "$PERF_MODE" != "default" ]]; then
+        print_error "Invalid --perf-mode: $PERF_MODE (valid: default, high)"
+        exit 1
+    fi
 }
 
 show_help() {
@@ -105,6 +117,7 @@ show_help() {
     echo "  --external-infra      Use existing external infrastructure"
     echo "  --non-interactive     Skip prompts, use defaults or existing config"
     echo "  --skip-ssl            Skip SSL certificate setup"
+    echo "  --perf-mode MODE      Resource mode: 'default' (no limits) or 'high' (32GB+/16+ cores)"
     echo "  --debug               Enable debug output"
     echo "  --help, -h            Show this help message"
     echo ""
@@ -304,6 +317,12 @@ step_start_services() {
 
     # Save version to config for upgrade tracking
     save_config_value "VERSION" "$VERSION" "$DEPLOY_ROOT/portal.env"
+
+    # Save performance mode if specified
+    if [[ -n "$PERF_MODE" ]]; then
+        save_config_value "PERF_MODE" "$PERF_MODE" "$DEPLOY_ROOT/portal.env"
+        print_info "Performance mode: $PERF_MODE"
+    fi
 
     # Generate deployment secret if not already set (used for API key provisioning)
     local existing_secret

@@ -1,0 +1,119 @@
+# =============================================================================
+# EZY Portal - High-Performance Resource Limits
+# =============================================================================
+# Overlay file for K6 stress testing on high-end servers.
+#
+# Requirements:
+#   - 32GB+ RAM
+#   - 16+ CPU cores
+#
+# Usage:
+#   ./install.sh --perf-mode high
+#
+# DO NOT use on small/medium servers - containers will be OOM killed.
+# Default installations (no --perf-mode) have no limits and work better
+# for variable load on constrained systems.
+# =============================================================================
+
+services:
+  portal:
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '4'
+        reservations:
+          memory: 2G
+          cpus: '2'
+
+  postgres:
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '4'
+        reservations:
+          memory: 4G
+          cpus: '2'
+
+  redis:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+
+  rabbitmq:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 1G
+          cpus: '1'
+
+  nginx:
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+
+  # Module limits (applied when modules are installed)
+  items:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 1G
+          cpus: '1'
+
+  bp:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 1G
+          cpus: '1'
+
+  prospects:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 1G
+          cpus: '1'
+
+  # Report Generator limits (applied when installed)
+  report-generator-api:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 1G
+          cpus: '1'
+
+  report-generator-service:
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
