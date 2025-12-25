@@ -31,6 +31,7 @@ source "$SCRIPT_DIR/lib/module-installer.sh"
 # -----------------------------------------------------------------------------
 SERVICE_TYPE=""
 REPORT_GENERATOR_VERSION="${REPORT_GENERATOR_VERSION:-latest}"
+RESTART_MODE=false
 
 # -----------------------------------------------------------------------------
 # Parse Arguments
@@ -56,6 +57,10 @@ parse_arguments() {
             --version)
                 REPORT_GENERATOR_VERSION="$2"
                 shift 2
+                ;;
+            --restart|-r)
+                RESTART_MODE=true
+                shift
                 ;;
             --debug)
                 DEBUG=true
@@ -88,6 +93,7 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --version VER    Image version tag (default: latest)"
+    echo "  --restart, -r    Restart service(s) to reload portal.env configuration"
     echo "  --debug          Enable debug output"
     echo "  --help, -h       Show this help message"
     echo ""
@@ -96,6 +102,7 @@ show_help() {
     echo "  ./add-report-generator.sh service                # Install scheduler only"
     echo "  ./add-report-generator.sh all                    # Install both"
     echo "  ./add-report-generator.sh api --version 1.0.0    # Specific version"
+    echo "  ./add-report-generator.sh api --restart          # Restart API to reload config"
     echo ""
     echo "After installation, services are accessible via Docker network:"
     echo "  API:     http://report-generator-api:5127/api/reports/..."
@@ -111,6 +118,35 @@ check_service_not_running() {
     local container="${project_name}-report-generator-${service_name}"
 
     check_not_running "$container"
+}
+
+check_service_is_running() {
+    local service_name="$1"
+    local project_name="${PROJECT_NAME:-ezy-portal}"
+    local container="${project_name}-report-generator-${service_name}"
+
+    if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+        print_error "Service 'report-generator-${service_name}' is not running"
+        print_info "Cannot restart a service that is not running"
+        print_info "Use: ./add-report-generator.sh $service_name (without --restart) to add it"
+        return 1
+    fi
+    return 0
+}
+
+stop_service() {
+    local service_name="$1"
+    local project_name="${PROJECT_NAME:-ezy-portal}"
+    local container="${project_name}-report-generator-${service_name}"
+
+    debug "Stopping container: $container"
+
+    if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+        print_info "Stopping container: $container"
+        docker stop "$container" 2>/dev/null || true
+        docker rm "$container" 2>/dev/null || true
+        print_success "Container stopped"
+    fi
 }
 
 # -----------------------------------------------------------------------------
@@ -208,9 +244,6 @@ main() {
     init_logging
     parse_arguments "$@"
 
-    echo ""
-    print_section "Adding Report Generator: $SERVICE_TYPE"
-
     # Load existing config
     if [[ -f "$DEPLOY_ROOT/portal.env" ]]; then
         load_config "$DEPLOY_ROOT/portal.env"
@@ -218,6 +251,52 @@ main() {
         print_error "portal.env not found. Run ./install.sh first."
         exit 1
     fi
+
+    # Determine which services to work with
+    local services=()
+    case "$SERVICE_TYPE" in
+        api)
+            services=("api")
+            ;;
+        service)
+            services=("service")
+            ;;
+        all)
+            services=("api" "service")
+            ;;
+    esac
+
+    # Restart mode: simplified flow
+    if [[ "$RESTART_MODE" == "true" ]]; then
+        echo ""
+        print_section "Restarting Report Generator: $SERVICE_TYPE"
+
+        # Check services are running
+        for svc in "${services[@]}"; do
+            check_service_is_running "$svc" || exit 1
+        done
+
+        # Stop and start each service
+        print_info "Reloading configuration from portal.env..."
+        for svc in "${services[@]}"; do
+            stop_service "$svc"
+            start_service "$svc"
+        done
+
+        # Wait for healthy
+        for svc in "${services[@]}"; do
+            wait_for_service_healthy "$svc" || true
+        done
+
+        echo ""
+        print_success "Restart complete! Report Generator ($SERVICE_TYPE) reloaded with new configuration"
+        log_info "Report Generator restarted: $SERVICE_TYPE"
+        exit 0
+    fi
+
+    # Normal add mode
+    echo ""
+    print_section "Adding Report Generator: $SERVICE_TYPE"
 
     # Pre-flight checks
     print_section "Step 1: Prerequisites"
@@ -232,20 +311,6 @@ main() {
     # Ensure directory structure
     print_section "Step 2: Directory Structure"
     ensure_directory_structure
-
-    # Determine which services to install
-    local services=()
-    case "$SERVICE_TYPE" in
-        api)
-            services=("api")
-            ;;
-        service)
-            services=("service")
-            ;;
-        all)
-            services=("api" "service")
-            ;;
-    esac
 
     # Check if services are already running
     for svc in "${services[@]}"; do

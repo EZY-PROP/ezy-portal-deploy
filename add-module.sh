@@ -37,6 +37,7 @@ source "$SCRIPT_DIR/lib/module-installer.sh"
 MODULE=""
 API_KEY=""
 VERSION="${VERSION:-latest}"
+RESTART_MODE=false
 
 # Module dependencies
 declare -A MODULE_DEPENDENCIES=(
@@ -81,6 +82,10 @@ parse_arguments() {
                 VERSION="$2"
                 shift 2
                 ;;
+            --restart|-r)
+                RESTART_MODE=true
+                shift
+                ;;
             --debug)
                 DEBUG=true
                 export DEBUG
@@ -111,6 +116,7 @@ show_help() {
     echo "Options:"
     echo "  --api-key KEY    API key for the module (optional - auto-provisioned if not provided)"
     echo "  --version VER    Image version tag (default: latest)"
+    echo "  --restart, -r    Restart module to reload portal.env configuration"
     echo "  --debug          Enable debug output"
     echo "  --help, -h       Show this help message"
     echo ""
@@ -124,6 +130,7 @@ show_help() {
     echo "  ./add-module.sh items                      # Auto-provision API key"
     echo "  ./add-module.sh items --api-key abc123     # Use explicit API key"
     echo "  ./add-module.sh bp --version 1.0.2         # Specific version"
+    echo "  ./add-module.sh items --restart            # Restart to reload config"
 }
 
 # -----------------------------------------------------------------------------
@@ -157,6 +164,38 @@ handle_api_key() {
     local var_name="${MODULE_API_KEY_VARS[$module]}"
 
     get_or_provision_api_key "$module" "$var_name" "$api_key"
+}
+
+# -----------------------------------------------------------------------------
+# Container Operations
+# -----------------------------------------------------------------------------
+stop_module() {
+    local module="$1"
+    local project_name="${PROJECT_NAME:-ezy-portal}"
+    local container="${project_name}-${module}"
+
+    debug "Stopping container: $container"
+
+    if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+        print_info "Stopping container: $container"
+        docker stop "$container" 2>/dev/null || true
+        docker rm "$container" 2>/dev/null || true
+        print_success "Container stopped"
+    fi
+}
+
+check_module_is_running() {
+    local module="$1"
+    local project_name="${PROJECT_NAME:-ezy-portal}"
+    local container="${project_name}-${module}"
+
+    if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+        print_error "Module '$module' is not running"
+        print_info "Cannot restart a module that is not running"
+        print_info "Use: ./add-module.sh $module (without --restart) to add it"
+        return 1
+    fi
+    return 0
 }
 
 start_module() {
@@ -233,9 +272,6 @@ main() {
     init_logging
     parse_arguments "$@"
 
-    echo ""
-    print_section "Adding Module: $MODULE"
-
     # Load existing config
     if [[ -f "$DEPLOY_ROOT/portal.env" ]]; then
         load_config "$DEPLOY_ROOT/portal.env"
@@ -243,6 +279,32 @@ main() {
         print_error "portal.env not found. Run ./install.sh first."
         exit 1
     fi
+
+    # Restart mode: simplified flow
+    if [[ "$RESTART_MODE" == "true" ]]; then
+        echo ""
+        print_section "Restarting Module: $MODULE"
+
+        # Check module is running
+        check_module_is_running "$MODULE" || exit 1
+
+        # Stop and start
+        print_info "Reloading configuration from portal.env..."
+        stop_module "$MODULE"
+        start_module "$MODULE"
+
+        # Wait for healthy
+        wait_for_module_healthy "$MODULE" || true
+
+        echo ""
+        print_success "Restart complete! $MODULE reloaded with new configuration"
+        log_info "Module restarted: $MODULE"
+        exit 0
+    fi
+
+    # Normal add mode
+    echo ""
+    print_section "Adding Module: $MODULE"
 
     # Pre-flight checks
     print_section "Prerequisites"
