@@ -1,0 +1,17 @@
+# =============================================================================
+# EZY Portal - Report Generator API Resource Limits
+# =============================================================================
+# High-performance overlay for Report Generator API.
+# Applied when PERF_MODE=high is set.
+# =============================================================================
+
+services:
+  report-generator-api:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 1G
+          cpus: '1'

@@ -1,0 +1,17 @@
+# =============================================================================
+# EZY Portal - Report Generator Service Resource Limits
+# =============================================================================
+# High-performance overlay for Report Generator Scheduler.
+# Applied when PERF_MODE=high is set.
+# =============================================================================
+
+services:
+  report-generator-service:
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+        reservations:
+          memory: 512M
+          cpus: '0.5'

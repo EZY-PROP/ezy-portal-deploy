@@ -201,6 +201,7 @@ start_service() {
     local service_name="$1"
     local project_name="${PROJECT_NAME:-ezy-portal}"
     local compose_file="$DEPLOY_ROOT/docker/docker-compose.report-generator-${service_name}.yml"
+    local limits_file="$DEPLOY_ROOT/docker/docker-compose.report-generator-${service_name}-limits.yml"
 
     if [[ ! -f "$compose_file" ]]; then
         print_error "Compose file not found: $compose_file"
@@ -209,8 +210,17 @@ start_service() {
 
     print_info "Starting report-generator-${service_name}..."
 
+    # Build compose args
+    local compose_args="-f $compose_file"
+
+    # Add limits overlay if high-performance mode
+    if [[ "${PERF_MODE:-}" == "high" ]] && [[ -f "$limits_file" ]]; then
+        compose_args="$compose_args -f $limits_file"
+        print_info "High-performance mode: applying resource limits"
+    fi
+
     # Use -p to group with other portal containers
-    local cmd="docker compose -p $project_name -f $compose_file --env-file $DEPLOY_ROOT/portal.env up -d"
+    local cmd="docker compose -p $project_name $compose_args --env-file $DEPLOY_ROOT/portal.env up -d"
     log_info "Running: $cmd"
 
     if eval "$cmd"; then

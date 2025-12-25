@@ -229,6 +229,13 @@ start_module() {
             local container="${project_name}-${m}"
             if [[ "$m" == "$module" ]] || docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
                 compose_args="$compose_args -f $m_compose"
+                # Add limits overlay for this module if high-performance mode
+                if [[ "${PERF_MODE:-}" == "high" ]]; then
+                    local limits_file="$DEPLOY_ROOT/docker/docker-compose.module-${m}-limits.yml"
+                    if [[ -f "$limits_file" ]]; then
+                        compose_args="$compose_args -f $limits_file"
+                    fi
+                fi
             fi
         fi
         [[ "$m" == "$module" ]] && break

@@ -1,0 +1,17 @@
+# =============================================================================
+# EZY Portal - Business Partners Module Resource Limits
+# =============================================================================
+# High-performance overlay for the BP module.
+# Applied when PERF_MODE=high is set.
+# =============================================================================
+
+services:
+  bp:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2'
+        reservations:
+          memory: 1G
+          cpus: '1'
