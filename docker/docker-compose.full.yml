@@ -30,7 +30,7 @@ services:
       - ../uploads:/app/uploads
       - ../logs/portal:/app/logs
     depends_on:
-      pgbouncer:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -60,34 +60,6 @@ services:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-portal}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    networks:
-      - portal-network
-
-  # ---------------------------------------------------------------------------
-  # PgBouncer Connection Pooler
-  # ---------------------------------------------------------------------------
-  pgbouncer:
-    image: edoburu/pgbouncer:latest
-    container_name: ${PROJECT_NAME:-ezy-portal}-pgbouncer
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-portal}
-      POOL_MODE: transaction
-      MAX_CLIENT_CONN: 500
-      DEFAULT_POOL_SIZE: 25
-      MIN_POOL_SIZE: 10
-      RESERVE_POOL_SIZE: 5
-      RESERVE_POOL_TIMEOUT: 3
-      MAX_DB_CONNECTIONS: 100
-      AUTH_TYPE: scram-sha-256
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432"]
       interval: 10s
       timeout: 5s
       retries: 5

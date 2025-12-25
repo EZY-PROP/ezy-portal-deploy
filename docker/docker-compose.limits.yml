@@ -48,16 +48,6 @@ services:
           memory: 4G
           cpus: '2'
 
-  pgbouncer:
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.5'
-        reservations:
-          memory: 128M
-          cpus: '0.25'
-
   redis:
     deploy:
       resources:
@@ -88,54 +78,11 @@ services:
           memory: 512M
           cpus: '0.5'
 
-  # Module limits (applied when modules are installed)
-  items:
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '2'
-        reservations:
-          memory: 1G
-          cpus: '1'
-
-  bp:
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '2'
-        reservations:
-          memory: 1G
-          cpus: '1'
-
-  prospects:
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '2'
-        reservations:
-          memory: 1G
-          cpus: '1'
-
-  # Report Generator limits (applied when installed)
-  report-generator-api:
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-          cpus: '2'
-        reservations:
-          memory: 1G
-          cpus: '1'
-
-  report-generator-service:
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-          cpus: '1'
-        reservations:
-          memory: 512M
-          cpus: '0.5'
+# =============================================================================
+# Module resource limits are defined in their respective compose files:
+#   - docker-compose.module-items.yml
+#   - docker-compose.module-bp.yml
+#   - docker-compose.module-prospects.yml
+#   - docker-compose.report-generator-api.yml
+#   - docker-compose.report-generator-service.yml
+# =============================================================================

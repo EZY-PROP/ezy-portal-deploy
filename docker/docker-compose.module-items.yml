@@ -15,9 +15,9 @@ services:
     expose:
       - "5009"
     environment:
-      # Database (via PgBouncer connection pooler)
-      - DB_HOST=pgbouncer
-      - DB_PORT=6432
+      # Database (shared with portal)
+      - DB_HOST=postgres
+      - DB_PORT=5432
       - DB_USER=${POSTGRES_USER:-postgres}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_NAME=${POSTGRES_DB:-portal}
