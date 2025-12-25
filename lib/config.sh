@@ -305,8 +305,8 @@ prompt_database_config() {
         save_config_value "POSTGRES_PASSWORD" "$db_password" "$config_file"
         print_success "Database password generated (saved to config file)"
 
-        # Auto-generate connection string
-        local conn_string="Host=postgres;Port=5432;Database=${db_name};Username=${db_user};Password=${db_password}"
+        # Auto-generate connection string (via PgBouncer; Pooling=false to avoid double-pooling)
+        local conn_string="Host=pgbouncer;Port=6432;Database=${db_name};Username=${db_user};Password=${db_password};Pooling=false"
         save_config_value "ConnectionStrings__DefaultConnection" "$conn_string" "$config_file"
 
     else
@@ -553,8 +553,8 @@ create_default_config() {
     save_config_value "RabbitMq__Password" "$rmq_password" "$config_file"
     save_config_value "RabbitMq__VirtualHost" "/" "$config_file"
 
-    # Update connection string
-    local conn_string="Host=postgres;Port=5432;Database=portal;Username=postgres;Password=${db_password}"
+    # Update connection string (via PgBouncer; Pooling=false to avoid double-pooling)
+    local conn_string="Host=pgbouncer;Port=6432;Database=portal;Username=postgres;Password=${db_password};Pooling=false"
     save_config_value "ConnectionStrings__DefaultConnection" "$conn_string" "$config_file"
 
     print_success "Default configuration created: $config_file"
