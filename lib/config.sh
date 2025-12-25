@@ -369,12 +369,21 @@ prompt_rabbitmq_config() {
         prompt_input "RabbitMQ user" "portal" rmq_user
         rmq_password=$(generate_password_alphanum 24)
 
+        # Docker container variables
         save_config_value "RABBITMQ_HOST" "rabbitmq" "$config_file"
         save_config_value "RABBITMQ_PORT" "5672" "$config_file"
         save_config_value "RABBITMQ_USER" "$rmq_user" "$config_file"
         save_config_value "RABBITMQ_PASSWORD" "$rmq_password" "$config_file"
         save_config_value "RABBITMQ_DEFAULT_USER" "$rmq_user" "$config_file"
         save_config_value "RABBITMQ_DEFAULT_PASS" "$rmq_password" "$config_file"
+
+        # Application settings (for .NET apps)
+        save_config_value "RabbitMq__Enabled" "true" "$config_file"
+        save_config_value "RabbitMq__Host" "rabbitmq" "$config_file"
+        save_config_value "RabbitMq__Port" "5672" "$config_file"
+        save_config_value "RabbitMq__User" "$rmq_user" "$config_file"
+        save_config_value "RabbitMq__Password" "$rmq_password" "$config_file"
+        save_config_value "RabbitMq__VirtualHost" "/" "$config_file"
 
         print_success "RabbitMQ password generated"
     else
@@ -385,10 +394,19 @@ prompt_rabbitmq_config() {
         prompt_input "RabbitMQ user" "guest" rmq_user
         prompt_password "RabbitMQ password" rmq_password
 
+        # Docker/external variables
         save_config_value "RABBITMQ_HOST" "$rmq_host" "$config_file"
         save_config_value "RABBITMQ_PORT" "$rmq_port" "$config_file"
         save_config_value "RABBITMQ_USER" "$rmq_user" "$config_file"
         save_config_value "RABBITMQ_PASSWORD" "$rmq_password" "$config_file"
+
+        # Application settings (for .NET apps)
+        save_config_value "RabbitMq__Enabled" "true" "$config_file"
+        save_config_value "RabbitMq__Host" "$rmq_host" "$config_file"
+        save_config_value "RabbitMq__Port" "$rmq_port" "$config_file"
+        save_config_value "RabbitMq__User" "$rmq_user" "$config_file"
+        save_config_value "RabbitMq__Password" "$rmq_password" "$config_file"
+        save_config_value "RabbitMq__VirtualHost" "/" "$config_file"
     fi
 }
 
@@ -465,12 +483,14 @@ prompt_email_config() {
     prompt_password "SMTP password" smtp_password
     prompt_input "From email address" "$smtp_user" from_email
 
+    save_config_value "Email__ServiceType" "SMTP" "$config_file"
     save_config_value "Email__SmtpHost" "$smtp_host" "$config_file"
     save_config_value "Email__SmtpPort" "$smtp_port" "$config_file"
-    save_config_value "Email__SmtpUsername" "$smtp_user" "$config_file"
-    save_config_value "Email__SmtpPassword" "$smtp_password" "$config_file"
-    save_config_value "Email__FromEmail" "$from_email" "$config_file"
-    save_config_value "Email__EnableSsl" "true" "$config_file"
+    save_config_value "Email__Username" "$smtp_user" "$config_file"
+    save_config_value "Email__Password" "$smtp_password" "$config_file"
+    save_config_value "Email__UseSsl" "true" "$config_file"
+    save_config_value "Email__FromName" "Portal" "$config_file"
+    save_config_value "Email__FromAddress" "$from_email" "$config_file"
 
     print_success "Email configured"
 }
@@ -524,6 +544,14 @@ create_default_config() {
     save_config_value "POSTGRES_PASSWORD" "$db_password" "$config_file"
     save_config_value "RABBITMQ_PASSWORD" "$rmq_password" "$config_file"
     save_config_value "RABBITMQ_DEFAULT_PASS" "$rmq_password" "$config_file"
+
+    # RabbitMQ application settings (for .NET apps)
+    save_config_value "RabbitMq__Enabled" "true" "$config_file"
+    save_config_value "RabbitMq__Host" "rabbitmq" "$config_file"
+    save_config_value "RabbitMq__Port" "5672" "$config_file"
+    save_config_value "RabbitMq__User" "portal" "$config_file"
+    save_config_value "RabbitMq__Password" "$rmq_password" "$config_file"
+    save_config_value "RabbitMq__VirtualHost" "/" "$config_file"
 
     # Update connection string
     local conn_string="Host=postgres;Port=5432;Database=portal;Username=postgres;Password=${db_password}"
