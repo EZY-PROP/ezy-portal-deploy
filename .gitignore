@@ -62,3 +62,4 @@ Thumbs.db
 *.swo
 *~
 .admin-access-enabled
+.docker-compose.admin.generated.yml
