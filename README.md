@@ -6,7 +6,7 @@ Single-command deployment for EZY Portal. Clone this repository to your cloud se
 
 ```bash
 # 1. Clone this repository
-git clone https://github.com/ezy-prop/portal-deploy.git
+git clone https://github.com/ezy-ts/portal-deploy.git
 cd portal-deploy
 
 # 2. Set your GitHub Personal Access Token
@@ -313,7 +313,7 @@ openssl x509 -in nginx/ssl/server.crt -text -noout
 
 ## Support
 
-- Issues: https://github.com/ezy-prop/portal-deploy/issues
+- Issues: https://github.com/ezy-ts/portal-deploy/issues
 - Documentation: https://docs.ezy-portal.com
 
 ## License

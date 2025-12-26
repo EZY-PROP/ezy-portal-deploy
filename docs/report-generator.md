@@ -288,8 +288,8 @@ Or with local images:
 
 ```bash
 # Pull new images
-docker pull ghcr.io/ezy-prop/ezy-report-generator-api:1.1.0
-docker pull ghcr.io/ezy-prop/ezy-report-generator-service:1.1.0
+docker pull ghcr.io/ezy-ts/ezy-report-generator-api:1.1.0
+docker pull ghcr.io/ezy-ts/ezy-report-generator-service:1.1.0
 
 # Recreate containers
 ./remove-report-generator.sh all --force

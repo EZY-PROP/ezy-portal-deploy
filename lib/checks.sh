@@ -136,7 +136,7 @@ check_github_pat() {
 }
 
 check_ghcr_login() {
-    local username="${GITHUB_USERNAME:-ezy-prop}"
+    local username="${GITHUB_USERNAME:-ezy-ts}"
 
     print_info "Attempting to login to GitHub Container Registry..."
 

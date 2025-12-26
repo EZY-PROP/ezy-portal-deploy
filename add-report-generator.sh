@@ -174,7 +174,7 @@ ensure_directory_structure() {
 # -----------------------------------------------------------------------------
 pull_image() {
     local service_name="$1"
-    local ghcr_image="ghcr.io/ezy-prop/ezy-report-generator-${service_name}:${REPORT_GENERATOR_VERSION}"
+    local ghcr_image="ghcr.io/ezy-ts/ezy-report-generator-${service_name}:${REPORT_GENERATOR_VERSION}"
 
     # Check if image already exists locally
     if docker image inspect "$ghcr_image" &>/dev/null; then

@@ -11,7 +11,7 @@ services:
   # Prospects Micro-Frontend
   # ---------------------------------------------------------------------------
   prospects:
-    image: ${PROSPECTS_IMAGE:-ghcr.io/ezy-prop/ezy-portal-prospects}:${VERSION:-latest}
+    image: ${PROSPECTS_IMAGE:-ghcr.io/ezy-ts/ezy-portal-prospects}:${VERSION:-latest}
     container_name: ${PROJECT_NAME:-ezy-portal}-prospects
     expose:
       - "3000"

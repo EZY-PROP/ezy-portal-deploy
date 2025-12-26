@@ -12,7 +12,7 @@ fi
 
 # Default values
 REGISTRY="ghcr.io"
-GITHUB_ORG="${GITHUB_ORG:-ezy-prop}"
+GITHUB_ORG="${GITHUB_ORG:-ezy-ts}"
 
 # Module image names
 declare -A MODULE_IMAGES=(

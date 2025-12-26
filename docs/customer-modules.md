@@ -33,13 +33,13 @@ If the customer module is published to GitHub with release assets:
 
 ```bash
 # Install latest version
-./add-customer-module.sh ezy-prop/red-cloud-quotation-tool
+./add-customer-module.sh ezy-ts/red-cloud-quotation-tool
 
 # Install specific version
-./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --version v1.0.0
+./add-customer-module.sh ezy-ts/red-cloud-quotation-tool --version v1.0.0
 
 # With explicit API key
-./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --api-key your-api-key
+./add-customer-module.sh ezy-ts/red-cloud-quotation-tool --api-key your-api-key
 ```
 
 ### Option 2: From Local Package File
@@ -62,7 +62,7 @@ For development or when the Docker image is built locally:
 ```bash
 # Build the image locally first
 cd /path/to/customer-module
-docker build -f deploy/Dockerfile.unified -t ghcr.io/ezy-prop/red-cloud-quotation-tool:latest .
+docker build -f deploy/Dockerfile.unified -t ghcr.io/ezy-ts/red-cloud-quotation-tool:latest .
 
 # Install with --local flag
 ./add-customer-module.sh --from-file /tmp/package.tar.gz --local
@@ -103,7 +103,7 @@ Output:
 ```
 MODULE                         VERSION         STATUS       REPOSITORY
 ------                         -------         ------       ----------
-red-cloud-quotation-tool       1.0.0           healthy      ezy-prop/red-cloud-quotation-tool
+red-cloud-quotation-tool       1.0.0           healthy      ezy-ts/red-cloud-quotation-tool
 ```
 
 ### View Module Logs
@@ -168,7 +168,7 @@ module:
   moduleVersion: "1.0.0"
 
   image:
-    repository: ghcr.io/ezy-prop/red-cloud-quotation-tool
+    repository: ghcr.io/ezy-ts/red-cloud-quotation-tool
     tag: "1.0.0"
 
   port: 5012

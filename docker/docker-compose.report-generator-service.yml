@@ -7,7 +7,7 @@
 
 services:
   report-generator-service:
-    image: ghcr.io/ezy-prop/ezy-report-generator-service:${REPORT_GENERATOR_VERSION:-latest}
+    image: ghcr.io/ezy-ts/ezy-report-generator-service:${REPORT_GENERATOR_VERSION:-latest}
     container_name: ezy-report-generator-service
     restart: unless-stopped
     command: ["scheduler"]

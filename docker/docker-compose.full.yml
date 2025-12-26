@@ -18,7 +18,7 @@ services:
   # Portal Application (Core Shell)
   # ---------------------------------------------------------------------------
   portal:
-    image: ${PORTAL_IMAGE:-ghcr.io/ezy-prop/ezy-portal/ezy-portal}:${VERSION:-latest}
+    image: ${PORTAL_IMAGE:-ghcr.io/ezy-ts/ezy-portal/ezy-portal}:${VERSION:-latest}
     container_name: ${PROJECT_NAME:-ezy-portal}
     expose:
       - "8080"

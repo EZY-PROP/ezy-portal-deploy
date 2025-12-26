@@ -5,10 +5,10 @@
 # Hot-add a customer-specific micro-frontend module from GitHub Release
 #
 # Usage:
-#   ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool
-#   ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --version 1.0.0
-#   ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --api-key <key>
-#   ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --restart
+#   ./add-customer-module.sh ezy-ts/red-cloud-quotation-tool
+#   ./add-customer-module.sh ezy-ts/red-cloud-quotation-tool --version 1.0.0
+#   ./add-customer-module.sh ezy-ts/red-cloud-quotation-tool --api-key <key>
+#   ./add-customer-module.sh ezy-ts/red-cloud-quotation-tool --restart
 #   ./add-customer-module.sh --from-file ./package.tar.gz
 #
 # The portal must be running before adding customer modules.
@@ -103,7 +103,7 @@ parse_arguments() {
 
     # Restart mode only needs repo name
     if [[ "$RESTART_MODE" == "true" && -z "$GITHUB_REPO" ]]; then
-        print_error "--restart requires a GitHub repo name (e.g., ezy-prop/module-name)"
+        print_error "--restart requires a GitHub repo name (e.g., ezy-ts/module-name)"
         exit 1
     fi
 }
@@ -115,7 +115,7 @@ show_help() {
     echo "       ./add-customer-module.sh --from-file <package> [OPTIONS]"
     echo ""
     echo "Arguments:"
-    echo "  <org/repo>           GitHub repository (e.g., ezy-prop/red-cloud-quotation-tool)"
+    echo "  <org/repo>           GitHub repository (e.g., ezy-ts/red-cloud-quotation-tool)"
     echo ""
     echo "Options:"
     echo "  --version VERSION    Release version to install (default: latest)"
@@ -128,13 +128,13 @@ show_help() {
     echo ""
     echo "Examples:"
     echo "  # Install latest release from GitHub"
-    echo "  ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool"
+    echo "  ./add-customer-module.sh ezy-ts/red-cloud-quotation-tool"
     echo ""
     echo "  # Install specific version"
-    echo "  ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --version v1.0.0"
+    echo "  ./add-customer-module.sh ezy-ts/red-cloud-quotation-tool --version v1.0.0"
     echo ""
     echo "  # Restart to reload configuration"
-    echo "  ./add-customer-module.sh ezy-prop/red-cloud-quotation-tool --restart"
+    echo "  ./add-customer-module.sh ezy-ts/red-cloud-quotation-tool --restart"
     echo ""
     echo "  # Install from local zip file"
     echo "  ./add-customer-module.sh --from-file ./quotation-tool-1.0.0.zip"
@@ -352,7 +352,7 @@ main() {
 
     # Quick upgrade path: when --upgrade and compose file exists with local image available
     if [[ "$UPGRADE_MODE" == "true" && -n "$GITHUB_REPO" ]]; then
-        # Extract module name from repo (e.g., red-cloud-quotation-tool from ezy-prop/red-cloud-quotation-tool)
+        # Extract module name from repo (e.g., red-cloud-quotation-tool from ezy-ts/red-cloud-quotation-tool)
         local module_name="${GITHUB_REPO##*/}"
         local compose_file
         compose_file=$(get_customer_compose_file "$module_name")

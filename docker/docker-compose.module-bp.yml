@@ -11,7 +11,7 @@ services:
   # Business Partners Micro-Frontend
   # ---------------------------------------------------------------------------
   bp:
-    image: ${BP_IMAGE:-ghcr.io/ezy-prop/ezy-portal-bp}:${VERSION:-latest}
+    image: ${BP_IMAGE:-ghcr.io/ezy-ts/ezy-portal-bp}:${VERSION:-latest}
     container_name: ${PROJECT_NAME:-ezy-portal}-bp
     expose:
       - "5008"
