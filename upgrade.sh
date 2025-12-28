@@ -35,11 +35,14 @@ source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/docker.sh"
 source "$SCRIPT_DIR/lib/ssl.sh"
 source "$SCRIPT_DIR/lib/backup.sh"
+source "$SCRIPT_DIR/lib/frontend.sh"
 
 # -----------------------------------------------------------------------------
 # Default Values
 # -----------------------------------------------------------------------------
 VERSION="${VERSION:-latest}"
+BACKEND_VERSION="${BACKEND_VERSION:-${VERSION}}"
+FRONTEND_VERSION="${FRONTEND_VERSION:-${VERSION}}"
 PROJECT_NAME="${PROJECT_NAME:-ezy-portal}"
 SKIP_BACKUP=false
 DO_ROLLBACK=false
@@ -53,6 +56,16 @@ parse_arguments() {
         case $1 in
             --version)
                 VERSION="$2"
+                BACKEND_VERSION="${BACKEND_VERSION:-$2}"
+                FRONTEND_VERSION="${FRONTEND_VERSION:-$2}"
+                shift 2
+                ;;
+            --backend-version)
+                BACKEND_VERSION="$2"
+                shift 2
+                ;;
+            --frontend-version)
+                FRONTEND_VERSION="$2"
                 shift 2
                 ;;
             --skip-backup)
@@ -86,11 +99,13 @@ show_help() {
     echo "Usage: ./upgrade.sh [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --version VERSION     Upgrade to specific version (default: latest)"
-    echo "  --skip-backup         Skip backup before upgrade (not recommended)"
-    echo "  --rollback            Rollback to previous version from backup"
-    echo "  --force               Force upgrade even if same version"
-    echo "  --help, -h            Show this help message"
+    echo "  --version VERSION          Upgrade both backend and frontend to specific version (default: latest)"
+    echo "  --backend-version VERSION  Upgrade backend to specific version"
+    echo "  --frontend-version VERSION Upgrade frontend to specific version"
+    echo "  --skip-backup              Skip backup before upgrade (not recommended)"
+    echo "  --rollback                 Rollback to previous version from backup"
+    echo "  --force                    Force upgrade even if same version"
+    echo "  --help, -h                 Show this help message"
     echo ""
     echo "Examples:"
     echo "  # Upgrade to latest"
@@ -98,6 +113,9 @@ show_help() {
     echo ""
     echo "  # Upgrade to specific version"
     echo "  ./upgrade.sh --version 1.0.2"
+    echo ""
+    echo "  # Upgrade only frontend"
+    echo "  ./upgrade.sh --frontend-version 1.0.3"
     echo ""
     echo "  # Rollback to previous version"
     echo "  ./upgrade.sh --rollback"
@@ -121,10 +139,15 @@ step_validate_installation() {
     # Load configuration
     load_config "$DEPLOY_ROOT/portal.env"
 
-    # Get current version
+    # Get current versions
     CURRENT_VERSION=$(get_current_portal_version)
-    print_info "Current version: $CURRENT_VERSION"
-    print_info "Target version: $VERSION"
+    CURRENT_BACKEND_VERSION="${BACKEND_VERSION:-$CURRENT_VERSION}"
+    CURRENT_FRONTEND_VERSION=$(get_installed_frontend_version)
+
+    print_info "Current backend version: $CURRENT_BACKEND_VERSION"
+    print_info "Current frontend version: $CURRENT_FRONTEND_VERSION"
+    print_info "Target backend version: $BACKEND_VERSION"
+    print_info "Target frontend version: $FRONTEND_VERSION"
 
     # Detect infrastructure mode
     INFRASTRUCTURE_MODE=$(detect_infrastructure_type)
@@ -155,17 +178,36 @@ step_check_prerequisites() {
 step_compare_versions() {
     print_section "Step 3: Comparing Versions"
 
-    if [[ "$CURRENT_VERSION" == "$VERSION" ]] && [[ "$FORCE" != true ]]; then
-        print_info "Already running version $VERSION"
+    local needs_backend_upgrade=false
+    local needs_frontend_upgrade=false
 
-        if ! confirm "Force reinstall?" "n"; then
-            print_info "Upgrade cancelled"
-            exit 0
-        fi
-    elif [[ "$CURRENT_VERSION" == "$VERSION" ]]; then
-        print_warning "Forcing reinstall of version $VERSION"
+    # Check backend version
+    if [[ "$CURRENT_BACKEND_VERSION" != "$BACKEND_VERSION" ]]; then
+        needs_backend_upgrade=true
+        print_info "Backend: $CURRENT_BACKEND_VERSION -> $BACKEND_VERSION"
     else
-        print_info "Will upgrade from $CURRENT_VERSION to $VERSION"
+        print_info "Backend: already at version $BACKEND_VERSION"
+    fi
+
+    # Check frontend version
+    if [[ "$CURRENT_FRONTEND_VERSION" != "$FRONTEND_VERSION" ]]; then
+        needs_frontend_upgrade=true
+        print_info "Frontend: $CURRENT_FRONTEND_VERSION -> $FRONTEND_VERSION"
+    else
+        print_info "Frontend: already at version $FRONTEND_VERSION"
+    fi
+
+    if [[ "$needs_backend_upgrade" == false ]] && [[ "$needs_frontend_upgrade" == false ]]; then
+        if [[ "$FORCE" != true ]]; then
+            print_info "Already running target versions"
+
+            if ! confirm "Force reinstall?" "n"; then
+                print_info "Upgrade cancelled"
+                exit 0
+            fi
+        else
+            print_warning "Forcing reinstall of current versions"
+        fi
     fi
 
     if ! confirm "Proceed with upgrade?" "y"; then
@@ -203,14 +245,31 @@ step_create_backup() {
 }
 
 step_pull_new_image() {
-    print_section "Step 5: Pulling Images"
+    print_section "Step 5: Pulling Backend Images"
 
-    print_info "Version: $VERSION"
+    print_info "Backend version: $BACKEND_VERSION"
     print_info "Modules: ${MODULES:-portal}"
 
     # Pull images for all configured modules
-    if ! docker_pull_modules "$VERSION" "${MODULES:-portal}"; then
-        print_error "Failed to pull images for version $VERSION"
+    if ! docker_pull_modules "$BACKEND_VERSION" "${MODULES:-portal}"; then
+        print_error "Failed to pull images for backend version $BACKEND_VERSION"
+
+        if [[ -n "${BACKUP_PATH:-}" ]]; then
+            print_info "Backup is available for rollback: $BACKUP_PATH"
+        fi
+        exit 1
+    fi
+}
+
+step_update_frontend() {
+    print_section "Step 6: Updating Frontend"
+
+    print_info "Frontend version: $FRONTEND_VERSION"
+
+    if download_frontend "$FRONTEND_VERSION"; then
+        print_success "Frontend updated to version $FRONTEND_VERSION"
+    else
+        print_error "Failed to update frontend"
 
         if [[ -n "${BACKUP_PATH:-}" ]]; then
             print_info "Backup is available for rollback: $BACKUP_PATH"
@@ -220,7 +279,7 @@ step_pull_new_image() {
 }
 
 step_stop_services() {
-    print_section "Step 6: Stopping Current Services"
+    print_section "Step 7: Stopping Current Services"
 
     local project_name="${PROJECT_NAME:-ezy-portal}"
 
@@ -247,10 +306,16 @@ step_stop_services() {
 }
 
 step_start_new_version() {
-    print_section "Step 7: Starting New Version"
+    print_section "Step 8: Starting New Version"
 
-    # Update version in config
+    # Update versions in config
     save_config_value "VERSION" "$VERSION" "$DEPLOY_ROOT/portal.env"
+    save_config_value "BACKEND_VERSION" "$BACKEND_VERSION" "$DEPLOY_ROOT/portal.env"
+    save_config_value "FRONTEND_VERSION" "$FRONTEND_VERSION" "$DEPLOY_ROOT/portal.env"
+
+    # Export versions for docker compose
+    export BACKEND_VERSION
+    export FRONTEND_VERSION
 
     # Generate module image environment variables
     generate_module_image_vars "$VERSION" "${MODULES:-portal}"
@@ -279,7 +344,7 @@ step_start_new_version() {
 }
 
 step_verify_health() {
-    print_section "Step 8: Verifying Health"
+    print_section "Step 9: Verifying Health"
 
     local project_name="${PROJECT_NAME:-ezy-portal}"
     local timeout=180
@@ -318,13 +383,16 @@ step_verify_health() {
 }
 
 step_cleanup() {
-    print_section "Step 9: Cleanup"
+    print_section "Step 10: Cleanup"
 
     # Clean up old images
     docker_cleanup_old_images 3
 
     # Clean up old backups
     cleanup_old_backups 5
+
+    # Clean up old frontend backups
+    cleanup_frontend_backups 3
 
     print_success "Cleanup complete"
 }
@@ -389,10 +457,10 @@ show_success() {
     print_section "Upgrade Complete!"
 
     echo ""
-    print_success "EZY Portal upgraded to version $VERSION"
+    print_success "EZY Portal upgrade complete!"
     echo ""
-    echo "  Previous version: $CURRENT_VERSION"
-    echo "  Current version:  $VERSION"
+    echo "  Backend:  $CURRENT_BACKEND_VERSION -> $BACKEND_VERSION"
+    echo "  Frontend: $CURRENT_FRONTEND_VERSION -> $FRONTEND_VERSION"
     echo ""
     echo "  Portal URL:       $app_url"
     echo ""
@@ -403,7 +471,7 @@ show_success() {
         echo "  To rollback:      ./upgrade.sh --rollback"
     fi
 
-    log_info "Upgrade completed: $CURRENT_VERSION -> $VERSION"
+    log_info "Upgrade completed: Backend $CURRENT_BACKEND_VERSION -> $BACKEND_VERSION, Frontend $CURRENT_FRONTEND_VERSION -> $FRONTEND_VERSION"
 }
 
 # -----------------------------------------------------------------------------
@@ -436,6 +504,7 @@ main() {
     step_compare_versions
     step_create_backup
     step_pull_new_image
+    step_update_frontend
     step_stop_services
     step_start_new_version
     step_verify_health

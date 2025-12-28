@@ -40,11 +40,14 @@ source "$SCRIPT_DIR/lib/checks.sh"
 source "$SCRIPT_DIR/lib/config.sh"
 source "$SCRIPT_DIR/lib/docker.sh"
 source "$SCRIPT_DIR/lib/ssl.sh"
+source "$SCRIPT_DIR/lib/frontend.sh"
 
 # -----------------------------------------------------------------------------
 # Default Values
 # -----------------------------------------------------------------------------
 VERSION="${VERSION:-latest}"
+BACKEND_VERSION="${BACKEND_VERSION:-${VERSION}}"
+FRONTEND_VERSION="${FRONTEND_VERSION:-${VERSION}}"
 PROJECT_NAME="${PROJECT_NAME:-ezy-portal}"
 INFRASTRUCTURE_MODE=""
 INTERACTIVE=true
@@ -59,6 +62,16 @@ parse_arguments() {
         case $1 in
             --version)
                 VERSION="$2"
+                BACKEND_VERSION="${BACKEND_VERSION:-$2}"
+                FRONTEND_VERSION="${FRONTEND_VERSION:-$2}"
+                shift 2
+                ;;
+            --backend-version)
+                BACKEND_VERSION="$2"
+                shift 2
+                ;;
+            --frontend-version)
+                FRONTEND_VERSION="$2"
                 shift 2
                 ;;
             --full-infra)
@@ -112,18 +125,22 @@ show_help() {
     echo "Usage: ./install.sh [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --version VERSION     Install specific version (default: latest)"
-    echo "  --full-infra          Deploy PostgreSQL, Redis, RabbitMQ as containers"
-    echo "  --external-infra      Use existing external infrastructure"
-    echo "  --non-interactive     Skip prompts, use defaults or existing config"
-    echo "  --skip-ssl            Skip SSL certificate setup"
-    echo "  --perf-mode MODE      Resource mode: 'default' (no limits) or 'high' (32GB+/16+ cores)"
-    echo "  --debug               Enable debug output"
-    echo "  --help, -h            Show this help message"
+    echo "  --version VERSION          Install specific version for both backend and frontend (default: latest)"
+    echo "  --backend-version VERSION  Install specific backend version"
+    echo "  --frontend-version VERSION Install specific frontend version"
+    echo "  --full-infra               Deploy PostgreSQL, Redis, RabbitMQ as containers"
+    echo "  --external-infra           Use existing external infrastructure"
+    echo "  --non-interactive          Skip prompts, use defaults or existing config"
+    echo "  --skip-ssl                 Skip SSL certificate setup"
+    echo "  --perf-mode MODE           Resource mode: 'default' (no limits) or 'high' (32GB+/16+ cores)"
+    echo "  --debug                    Enable debug output"
+    echo "  --help, -h                 Show this help message"
     echo ""
     echo "Environment Variables:"
     echo "  GITHUB_PAT            GitHub Personal Access Token (required for GHCR)"
-    echo "  VERSION               Portal version to install"
+    echo "  VERSION               Portal version to install (sets both backend and frontend)"
+    echo "  BACKEND_VERSION       Backend version to install"
+    echo "  FRONTEND_VERSION      Frontend version to install"
     echo "  PROJECT_NAME          Container name prefix"
     echo ""
     echo "Examples:"
@@ -278,6 +295,8 @@ step_create_directories() {
         "$DEPLOY_ROOT/backups"
         "$DEPLOY_ROOT/logs"
         "$DEPLOY_ROOT/data"
+        "$DEPLOY_ROOT/dist/frontend"
+        "$DEPLOY_ROOT/dist/mff"
     )
 
     for dir in "${dirs[@]}"; do
@@ -287,27 +306,45 @@ step_create_directories() {
         fi
     done
 
+    # Create .gitkeep files for dist directories
+    touch "$DEPLOY_ROOT/dist/.gitkeep" 2>/dev/null || true
+    touch "$DEPLOY_ROOT/dist/mff/.gitkeep" 2>/dev/null || true
+
     # Make scripts executable
     chmod +x "$DEPLOY_ROOT/install.sh" 2>/dev/null || true
     chmod +x "$DEPLOY_ROOT/upgrade.sh" 2>/dev/null || true
+    chmod +x "$DEPLOY_ROOT/update-frontend.sh" 2>/dev/null || true
     chmod +x "$DEPLOY_ROOT/nginx/ssl/generate-self-signed.sh" 2>/dev/null || true
 
     print_success "Directories ready"
 }
 
 step_pull_image() {
-    print_section "Step 6: Pulling Portal Image"
+    print_section "Step 6: Pulling Backend Image"
 
-    print_info "Version: $VERSION"
+    print_info "Backend version: $BACKEND_VERSION"
 
-    if ! docker_pull_image "$VERSION"; then
-        print_error "Failed to pull portal image"
+    if ! docker_pull_image "$BACKEND_VERSION"; then
+        print_error "Failed to pull backend image"
+        exit 1
+    fi
+}
+
+step_install_frontend() {
+    print_section "Step 7: Installing Frontend"
+
+    print_info "Frontend version: $FRONTEND_VERSION"
+
+    if download_frontend "$FRONTEND_VERSION"; then
+        print_success "Frontend installed"
+    else
+        print_error "Failed to install frontend"
         exit 1
     fi
 }
 
 step_start_services() {
-    print_section "Step 7: Starting Services"
+    print_section "Step 8: Starting Services"
 
     local compose_file
     compose_file=$(get_compose_file "$INFRASTRUCTURE_MODE")
@@ -315,8 +352,14 @@ step_start_services() {
     print_info "Infrastructure mode: $INFRASTRUCTURE_MODE"
     print_info "Compose file: $compose_file"
 
-    # Save version to config for upgrade tracking
+    # Save versions to config for upgrade tracking
     save_config_value "VERSION" "$VERSION" "$DEPLOY_ROOT/portal.env"
+    save_config_value "BACKEND_VERSION" "$BACKEND_VERSION" "$DEPLOY_ROOT/portal.env"
+    save_config_value "FRONTEND_VERSION" "$FRONTEND_VERSION" "$DEPLOY_ROOT/portal.env"
+
+    # Export versions for docker compose
+    export BACKEND_VERSION
+    export FRONTEND_VERSION
 
     # Save performance mode if specified
     if [[ -n "$PERF_MODE" ]]; then
@@ -349,7 +392,7 @@ step_start_services() {
 }
 
 step_wait_for_healthy() {
-    print_section "Step 8: Waiting for Services"
+    print_section "Step 9: Waiting for Services"
 
     local container="${PROJECT_NAME:-ezy-portal}"
     local timeout=180
@@ -372,7 +415,7 @@ step_wait_for_healthy() {
 }
 
 step_health_check() {
-    print_section "Step 9: Final Health Check"
+    print_section "Step 10: Final Health Check"
 
     if run_health_checks; then
         print_success "All services are healthy"
@@ -392,6 +435,9 @@ show_success() {
     echo ""
     print_success "EZY Portal is now running!"
     echo ""
+    echo "  Backend version:  $BACKEND_VERSION"
+    echo "  Frontend version: $FRONTEND_VERSION"
+    echo ""
     echo "  Portal URL:     $app_url"
     echo "  API Swagger:    $app_url/swagger"
     echo "  Hangfire:       $app_url/hangfire"
@@ -406,9 +452,10 @@ show_success() {
     fi
 
     echo "Useful Commands:"
-    echo "  View logs:      docker logs ${PROJECT_NAME:-ezy-portal}"
-    echo "  Stop:           docker compose -f $compose_file down"
-    echo "  Upgrade:        ./upgrade.sh --version X.X.X"
+    echo "  View logs:        docker logs ${PROJECT_NAME:-ezy-portal}"
+    echo "  Stop:             docker compose -f $compose_file down"
+    echo "  Upgrade:          ./upgrade.sh --version X.X.X"
+    echo "  Update frontend:  ./update-frontend.sh --version X.X.X"
     echo ""
     echo "Add Modules:"
     echo "  ./add-module.sh items      # Items micro-frontend"
@@ -420,7 +467,7 @@ show_success() {
         print_info "Admin user will be created on first login: $ADMIN_EMAIL"
     fi
 
-    log_info "Installation completed successfully - Version: $VERSION"
+    log_info "Installation completed successfully - Backend: $BACKEND_VERSION, Frontend: $FRONTEND_VERSION"
 }
 
 # -----------------------------------------------------------------------------
@@ -447,6 +494,7 @@ main() {
     step_setup_ssl
     step_create_directories
     step_pull_image
+    step_install_frontend
     step_start_services
     step_wait_for_healthy
     step_health_check

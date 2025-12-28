@@ -2,6 +2,7 @@
 # EZY Portal - Full Deployment (All Dependencies Included)
 # =============================================================================
 # Self-contained deployment with PostgreSQL, Redis, RabbitMQ, and Nginx.
+# Backend served via Docker, frontend served as static files by Nginx.
 #
 # Usage:
 #   ./install.sh                                    # Interactive installation
@@ -15,10 +16,10 @@ name: ${PROJECT_NAME:-ezy-portal}
 
 services:
   # ---------------------------------------------------------------------------
-  # Portal Application (Core Shell)
+  # Portal Backend (API only - frontend served by Nginx)
   # ---------------------------------------------------------------------------
   portal:
-    image: ${PORTAL_IMAGE:-ghcr.io/ezy-ts/ezy-portal/ezy-portal}:${VERSION:-latest}
+    image: ${BACKEND_IMAGE:-ghcr.io/ezy-ts/ezy-portal-backend}:${BACKEND_VERSION:-latest}
     container_name: ${PROJECT_NAME:-ezy-portal}
     expose:
       - "8080"
@@ -107,7 +108,7 @@ services:
       - portal-network
 
   # ---------------------------------------------------------------------------
-  # Nginx Reverse Proxy
+  # Nginx Reverse Proxy (also serves frontend static files)
   # ---------------------------------------------------------------------------
   nginx:
     image: nginx:alpine
@@ -120,6 +121,7 @@ services:
       - ../nginx/conf.d:/etc/nginx/conf.d:ro
       - ../nginx/snippets:/etc/nginx/snippets:ro
       - ../nginx/ssl:/etc/nginx/ssl:ro
+      - ../dist:/usr/share/nginx/html:ro
       - nginx-cache:/var/cache/nginx
       - ../logs/nginx:/var/log/nginx
     depends_on:

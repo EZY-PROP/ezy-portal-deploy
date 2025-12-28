@@ -15,8 +15,9 @@ REGISTRY="ghcr.io"
 GITHUB_ORG="${GITHUB_ORG:-ezy-ts}"
 
 # Module image names
+# Note: portal now uses backend-only image (frontend served by nginx)
 declare -A MODULE_IMAGES=(
-    ["portal"]="ezy-portal"
+    ["portal"]="ezy-portal-backend"
     ["bp"]="ezy-portal-bp"
     ["items"]="ezy-portal-items"
     ["prospects"]="ezy-portal-prospects"
@@ -25,13 +26,13 @@ declare -A MODULE_IMAGES=(
 # Get image name for a module (always returns full GHCR path)
 get_module_image() {
     local module="$1"
-    local image_name="${MODULE_IMAGES[$module]:-ezy-portal}"
+    local image_name="${MODULE_IMAGES[$module]:-ezy-portal-backend}"
 
     echo "${REGISTRY}/${GITHUB_ORG}/${image_name}"
 }
 
-# Legacy compatibility
-IMAGE_NAME="ezy-portal"
+# Legacy compatibility (now points to backend)
+IMAGE_NAME="ezy-portal-backend"
 FULL_IMAGE="${REGISTRY}/${GITHUB_ORG}/${IMAGE_NAME}"
 
 # -----------------------------------------------------------------------------

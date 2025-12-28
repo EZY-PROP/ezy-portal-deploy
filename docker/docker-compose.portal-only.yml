@@ -1,8 +1,8 @@
 # =============================================================================
 # EZY Portal - Portal Only (External Infrastructure)
 # =============================================================================
-# Deploy only the portal container, connecting to external PostgreSQL, Redis,
-# and RabbitMQ services.
+# Deploy only the portal backend, connecting to external PostgreSQL, Redis,
+# and RabbitMQ services. Frontend is served as static files by Nginx.
 #
 # Usage:
 #   ./install.sh --external-infra              # Interactive with external infra
@@ -21,10 +21,10 @@ name: ${PROJECT_NAME:-ezy-portal}
 
 services:
   # ---------------------------------------------------------------------------
-  # Portal Application
+  # Portal Backend (API only - frontend served by Nginx)
   # ---------------------------------------------------------------------------
   portal:
-    image: ${PORTAL_IMAGE:-ezy-portal}:${VERSION:-latest}
+    image: ${BACKEND_IMAGE:-ghcr.io/ezy-ts/ezy-portal-backend}:${BACKEND_VERSION:-latest}
     container_name: ${PROJECT_NAME:-ezy-portal}
     expose:
       - "8080"
@@ -47,7 +47,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   # ---------------------------------------------------------------------------
-  # Nginx Reverse Proxy
+  # Nginx Reverse Proxy (also serves frontend static files)
   # ---------------------------------------------------------------------------
   nginx:
     image: nginx:alpine
@@ -60,6 +60,7 @@ services:
       - ../nginx/conf.d:/etc/nginx/conf.d:ro
       - ../nginx/snippets:/etc/nginx/snippets:ro
       - ../nginx/ssl:/etc/nginx/ssl:ro
+      - ../dist:/usr/share/nginx/html:ro
       - nginx-cache:/var/cache/nginx
       - nginx-logs:/var/log/nginx
     depends_on:
